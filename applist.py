@@ -332,26 +332,14 @@ def lich_trinh():
     week_start = get_week_start(anchor)
     week_dates = [week_start + timedelta(days=i) for i in range(6)]
 
-    # 1. TÌM TẤT CẢ TASK_ID CÓ TRONG BẢNG SCHEDULE TRONG TUẦN (ĐÃ ĐƯỢC PHÂN CÔNG)
-    assigned_task_ids = (
-        db.session.query(Schedule.task_id)
-        .filter(
-            Schedule.ngay_lam_viec >= week_dates[0],
-            Schedule.ngay_lam_viec <= week_dates[-1]
-        )
-        .distinct()
-        .subquery()
-    )
-
-    # 2. LẤY TẤT CẢ CÔNG VIỆC TRONG TUẦN NẰM TRONG DANH SÁCH ĐÃ PHÂN CÔNG TRÊN
+    # 1. LẤY TẤT CẢ CÔNG VIỆC TRONG TUẦN (KHÔNG BỊ LỌC BỞI BẢNG SCHEDULE)
     tasks_in_week = Task.query.filter(
         Task.ngay_gio >= week_dates[0],
         Task.ngay_gio <= week_dates[-1],
-        Task.completed == False,
-        Task.id.in_(assigned_task_ids)  # <--- Chỉ lấy task đã có ít nhất 1 phân công
+        Task.completed == False
     ).order_by(Task.ngay_gio, Task.ca_requirement).all()
 
-    # 3. GOM NHÓM DỮ LIỆU CÁC CÔNG VIỆC VÀO Ô (NGÀY, CA)
+    # 2. GOM NHÓM DỮ LIỆU CÁC CÔNG VIỆC VÀO Ô (NGÀY, CA)
     timetable = {}
     week_tasks = []
 
@@ -392,7 +380,6 @@ def lich_trinh():
         do_uu_tien_colors=DO_UU_TIEN_COLORS,
         do_uu_tien_bg=DO_UU_TIEN_BG,
     )
-
 @app.route("/employees")
 def employees_page():
     q = request.args.get("q", "").strip()

@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/logo.svg') }}">
 
-<!-- 🎨 ĐOẠN CSS FIX TRIỆT ĐỂ LỖI CHỮ TRÙNG MÀU NỀN -->
+<!-- 🎨 CSS FIX CHỮ & CHO PHÉP HIỂN THỊ N+1 CÔNG VIỆC TRÊN LỊCH -->
 <style>
   /* 1. Ép tất cả các thẻ văn bản thông thường về màu chữ trắng sáng */
   body, p, span, div, li, a {
@@ -65,6 +65,34 @@
   }
   a:not(.btn):not(.nav-item):hover {
       color: #79c0ff !important;
+  }
+
+  /* 7. 🔥 FIX TỰ ĐỘNG GIÃN CHIỀU CAO HIỂN THỊ TẤT CẢ N+1 CÔNG VIỆC */
+  .table-schedule td, 
+  .schedule-cell, 
+  .timetable-cell {
+      height: auto !important;
+      min-height: 90px;
+      vertical-align: top !important;
+      overflow: visible !important;
+  }
+
+  .task-card-container, 
+  .cell-content {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+      max-height: none !important; /* Bỏ giới hạn chiều cao */
+      overflow: visible !important;
+  }
+
+  .task-card, 
+  .schedule-item {
+      display: block !important;
+      width: 100% !important;
+      white-space: normal !important;
+      word-break: break-word;
+      margin-bottom: 4px;
   }
 </style>
 </head>
