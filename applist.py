@@ -416,7 +416,7 @@ def login():
 
     return render_template("login.html")
 
-
+# --- ROUTE ĐĂNG KÝ TÀI KHOẢN ---
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:
@@ -456,6 +456,41 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+# --- ROUTE TỰ ĐỘNG TẠO KEY ONLINE (ADMIN) ---
+@app.route('/generate-keys-admin')
+def generate_keys_admin():
+    import uuid
+    new_keys = []
+    
+    # Tự động sinh thêm 5 Key mới vào Database trên Render
+    for _ in range(5):
+        random_str = uuid.uuid4().hex[:12].upper()
+        formatted_key = f"{random_str[:4]}-{random_str[4:8]}-{random_str[8:]}"
+        
+        key_obj = ActivationKey(key=formatted_key, is_used=False)
+        db.session.add(key_obj)
+        new_keys.append(formatted_key)
+        
+    db.session.commit()
+    
+    # Trả về giao diện hiển thị danh sách Key
+    html_response = """
+    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; border: 1px solid #333; background: #1e1e2e; color: #fff; border-radius: 8px;">
+        <h2 style="color: #4ef037;">✅ Đã tạo thành công 5 Key mới!</h2>
+        <p>Sao chép một trong các Key dưới đây để đăng ký:</p>
+        <ul style="background: #2b2b3d; padding: 15px 30px; border-radius: 5px;">
+    """
+    for k in new_keys:
+        html_response += f"<li style='font-size: 18px; margin: 8px 0; font-weight: bold; color: #00d2ff;'>{k}</li>"
+    html_response += """
+        </ul>
+        <br>
+        <a href="/register" style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">👉 Đến trang Đăng ký ngay</a>
+    </div>
+    """
+    return html_response
 
 
 @app.route("/logout")
