@@ -1367,7 +1367,7 @@ def ensure_task_schema():
         if "created_by_id" not in schedule_columns:
             conn.execute(text("ALTER TABLE schedule ADD COLUMN created_by_id INTEGER REFERENCES users(id)"))
         if "updated_by_id" not in schedule_columns:
-            conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_by_id INTEGER REFERENCES users(id)"))
+            conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_at DATETIME"))
 
         conn.execute(text("UPDATE task SET ca_requirement='Sáng' WHERE ca_requirement NOT IN ('Sáng','Chiều') OR ca_requirement IS NULL"))
 
@@ -1375,6 +1375,15 @@ def ensure_task_schema():
 with app.app_context():
     ensure_task_schema()
     db.create_all()
+    
+    # Tự động tạo tài khoản Admin mặc định nếu chưa có
+    admin = User.query.filter_by(username="admin").first()
+    if not admin:
+        admin_user = User(username="admin")
+        admin_user.set_password("admin123")  # Mật khẩu mặc định
+        db.session.add(admin_user)
+        db.session.commit()
+        print("Đã tự động tạo tài khoản: admin / admin123")
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

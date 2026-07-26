@@ -124,13 +124,15 @@
         <i class="bi bi-cloud-arrow-up"></i><span>Nhập dữ liệu</span>
       </a>
     </nav>
-    <div class="sidebar-user">
-      <div class="user-avatar"><i class="bi bi-person-fill"></i></div>
-      <div class="user-info">
-        <div class="user-name">Admin</div>
-        <div class="user-role">Quản trị viên</div>
+    <div class="sidebar-user d-flex align-items-center justify-content-between px-3 py-2">
+      <div class="d-flex align-items-center">
+        <div class="user-avatar me-2"><i class="bi bi-person-fill"></i></div>
+        <div class="user-info">
+          <div class="user-name fw-bold">{{ current_user.username if current_user.is_authenticated else 'Admin' }}</div>
+          <div class="user-role small text-muted">Quản trị viên</div>
+        </div>
       </div>
-      <i class="bi bi-chevron-down"></i>
+      <a href="{{ url_for('logout') }}" class="text-danger fs-5" title="Đăng xuất"><i class="bi bi-box-arrow-right"></i></a>
     </div>
   </aside>
 
@@ -149,7 +151,7 @@
     <main class="page-content">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack mb-3">
           {% for category, message in messages %}
             <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
               {{ message }}
