@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký - Employee Task Scheduler</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .card-custom {
+            width: 100%;
+            max-width: 420px;
+            padding: 2.5rem;
+            border-radius: 16px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .form-control {
+            background-color: #0f172a;
+            border-color: #334155;
+            color: #fff;
+        }
+        .form-control:focus {
+            background-color: #0f172a;
+            color: #fff;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
+        }
+    </style>
+</head>
+<body>
+
+<div class="card-custom">
+    <h3 class="text-center mb-4 fw-bold text-white">ĐĂNG KÝ TÀI KHOẢN</h3>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show mb-3" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('register') }}">
+        <div class="mb-3">
+            <label class="form-label text-light">Tên đăng nhập</label>
+            <input type="text" class="form-control" name="username" required autocomplete="off">
+        </div>
+        
+        <div class="mb-3">
+            <label class="form-label text-light">Mật khẩu</label>
+            <input type="password" class="form-control" name="password" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label text-light">Xác nhận mật khẩu</label>
+            <input type="password" class="form-control" name="confirm_password" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label text-warning fw-semibold">Key kích hoạt (Dùng 1 lần)</label>
+            <input type="text" class="form-control border-warning text-uppercase" name="activation_key" placeholder="XXXX-XXXX-XXXX" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 mt-2 fw-semibold">Kích hoạt & Đăng ký</button>
+    </form>
+
+    <div class="text-center mt-4">
+        <small class="text-secondary">Đã có tài khoản? <a href="{{ url_for('login') }}" class="text-info text-decoration-none">Đăng nhập</a></small>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -15,6 +15,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, text
 
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
@@ -23,6 +26,45 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "s
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+# Cấu hình Secret Key cho Session
+app.secret_key = "bi-mat-khong-the-bat-mi-employee-scheduler"
+
+# Cấu hình Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+login_manager.login_message = "Vui lòng đăng nhập để sử dụng hệ thống."
+login_manager.login_message_category = "warning"
+
+
+# --- MODELS ---
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class ActivationKey(db.Model):
+    __tablename__ = 'activation_keys'
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True, nullable=False)
+    is_used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
 
 CA_LAM_VIEC = {"Sáng": "07:30 - 11:30", "Chiều": "13:00 - 17:00"}
 THU_TRONG_TUAN = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"]
@@ -50,6 +92,12 @@ class Employee(db.Model):
     vi_tri = db.Column(db.String(80))
     trinh_do = db.Column(db.String(20), default="Cơ bản")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    creator = db.relationship('User', foreign_keys=[created_by_id])
+    updater = db.relationship('User', foreign_keys=[updated_by_id])
     schedules = db.relationship("Schedule", backref="employee", cascade="all, delete-orphan", lazy=True)
 
     def to_dict(self):
@@ -80,6 +128,12 @@ class Task(db.Model):
     completed_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    creator = db.relationship('User', foreign_keys=[created_by_id])
+    updater = db.relationship('User', foreign_keys=[updated_by_id])
     schedules = db.relationship("Schedule", backref="task", cascade="all, delete-orphan", lazy=True)
 
     def to_dict(self):
@@ -105,6 +159,12 @@ class Schedule(db.Model):
     ca = db.Column(db.String(10), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    creator = db.relationship('User', foreign_keys=[created_by_id])
+    updater = db.relationship('User', foreign_keys=[updated_by_id])
     __table_args__ = (db.UniqueConstraint("employee_id", "ngay_lam_viec", "ca", name="uq_emp_day_ca"),)
 
 
@@ -116,6 +176,8 @@ class Page(db.Model):
     noi_dung = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
+# --- HELPER FUNCTIONS ---
 
 def parse_date(value, default=None):
     try:
@@ -270,7 +332,6 @@ def get_ai_suggested_employee_ids(task, ca="Sáng", limit=None):
     scored.sort(key=lambda x: x["score"], reverse=True)
     suggested = [item["id"] for item in scored if item["available"]]
     
-    # Kiểm tra số lượng đã phân công thực tế để tránh phân công thừa
     current_assigned_count = Schedule.query.filter_by(task_id=task.id).count()
     remaining_slots = max(0, task.so_luong_nv - current_assigned_count)
 
@@ -281,7 +342,7 @@ def get_ai_suggested_employee_ids(task, ca="Sáng", limit=None):
     return suggested
 
 
-def assign_task_ai(task, ca="Sáng"):
+def assign_task_ai(task, ca="Sáng", user_id=None):
     if not task or not task.ngay_gio:
         return [], ["Công việc thiếu ngày hoặc không tồn tại."]
     requested_ca = ca if ca in ["Sáng", "Chiều"] else task.ca_requirement or "Sáng"
@@ -296,7 +357,14 @@ def assign_task_ai(task, ca="Sáng"):
             emp = Employee.query.get(eid)
             errors.append(f"Nhân viên '{emp.ho_ten}' đã có lịch ca {requested_ca}.")
             continue
-        db.session.add(Schedule(employee_id=eid, task_id=task.id, ngay_lam_viec=task.ngay_gio.date(), ca=requested_ca))
+        db.session.add(Schedule(
+            employee_id=eid, 
+            task_id=task.id, 
+            ngay_lam_viec=task.ngay_gio.date(), 
+            ca=requested_ca,
+            created_by_id=user_id,
+            updated_by_id=user_id
+        ))
         assigned.append(eid)
     return assigned, errors
 
@@ -318,11 +386,90 @@ DO_UU_TIEN_BG = {
 TRINH_DO_ORDER = {"Cơ bản": 1, "Khá": 2, "Thành thạo": 3, "Chuyên gia": 4}
 
 
+# --- ROUTES AUTHENTICATION ---
+
 @app.route("/")
 def index():
+    if not current_user.is_authenticated:
+        return redirect(url_for("login"))
     return redirect(url_for("lich_trinh"))
 
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("lich_trinh"))
+
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        remember = True if request.form.get("remember") else False
+
+        user = User.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            login_user(user, remember=remember)
+            flash("Đăng nhập thành công!", "success")
+            next_page = request.args.get("next")
+            return redirect(next_page or url_for("lich_trinh"))
+        else:
+            flash("Tài khoản hoặc mật khẩu không chính xác!", "danger")
+
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for("lich_trinh"))
+
+    if request.method == "POST":
+        username = normalize_text(request.form.get("username"))
+        password = request.form.get("password")
+        confirm_password = request.form.get("confirm_password")
+        activation_key = normalize_text(request.form.get("activation_key"))
+
+        if not username or not password or not activation_key:
+            flash("Vui lòng điền đầy đủ tất cả thông tin!", "danger")
+            return render_template("register.html")
+
+        if password != confirm_password:
+            flash("Mật khẩu xác nhận không khớp!", "danger")
+            return render_template("register.html")
+
+        if User.query.filter_by(username=username).first():
+            flash(f"Tên đăng nhập '{username}' đã được sử dụng!", "warning")
+            return render_template("register.html")
+
+        key_obj = ActivationKey.query.filter_by(key=activation_key, is_used=False).first()
+        if not key_obj:
+            flash("Key kích hoạt không đúng hoặc đã được sử dụng!", "danger")
+            return render_template("register.html")
+
+        new_user = User(username=username)
+        new_user.set_password(password)
+        key_obj.is_used = True
+
+        db.session.add(new_user)
+        db.session.commit()
+
+        flash("Kích hoạt và đăng ký tài khoản thành công! Vui lòng đăng nhập.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Đã đăng xuất khỏi hệ thống.", "info")
+    return redirect(url_for("login"))
+
+
+# --- MAIN APP ROUTES ---
+
 @app.route("/lich-trinh")
+@login_required
 def lich_trinh():
     start_param = request.args.get("start")
     if start_param:
@@ -332,19 +479,16 @@ def lich_trinh():
     week_start = get_week_start(anchor)
     week_dates = [week_start + timedelta(days=i) for i in range(6)]
 
-    # 1. LẤY TẤT CẢ CÔNG VIỆC TRONG TUẦN (KHÔNG BỊ LỌC BỞI BẢNG SCHEDULE)
     tasks_in_week = Task.query.filter(
         Task.ngay_gio >= week_dates[0],
         Task.ngay_gio <= week_dates[-1],
         Task.completed == False
     ).order_by(Task.ngay_gio, Task.ca_requirement).all()
 
-    # 2. GOM NHÓM DỮ LIỆU CÁC CÔNG VIỆC VÀO Ô (NGÀY, CA)
     timetable = {}
     week_tasks = []
 
     for task in tasks_in_week:
-        # Tách phần date nếu ngay_gio là datetime
         task_date = task.ngay_gio.date() if hasattr(task.ngay_gio, 'date') else task.ngay_gio
         ca = task.ca_requirement or 'Sáng'
         key = (task_date, ca)
@@ -352,10 +496,7 @@ def lich_trinh():
         if key not in timetable:
             timetable[key] = []
         
-        # Thêm TẤT CẢ công việc thuộc (ngày, ca) đó vào danh sách của ô
         timetable[key].append(task)
-
-        # Đưa vào danh sách tổng hợp bên dưới
         week_tasks.append({
             "task": task, 
             "date": task_date, 
@@ -380,7 +521,10 @@ def lich_trinh():
         do_uu_tien_colors=DO_UU_TIEN_COLORS,
         do_uu_tien_bg=DO_UU_TIEN_BG,
     )
+
+
 @app.route("/employees")
+@login_required
 def employees_page():
     q = request.args.get("q", "").strip()
     query = Employee.query
@@ -401,6 +545,7 @@ def employees_page():
 
 
 @app.route("/employees/add", methods=["POST"])
+@login_required
 def employee_add():
     payload = {
         "ma_nv": normalize_text(request.form.get("ma_nv")),
@@ -417,6 +562,7 @@ def employee_add():
     if Employee.query.filter_by(ma_nv=payload["ma_nv"]).first():
         flash(f"Mã nhân viên '{payload['ma_nv']}' đã tồn tại.", "danger")
         return redirect(url_for("employees_page"))
+    
     emp = Employee(
         ma_nv=payload["ma_nv"],
         ho_ten=payload["ho_ten"],
@@ -424,6 +570,8 @@ def employee_add():
         bo_phan=payload["bo_phan"],
         vi_tri=payload["vi_tri"],
         trinh_do=payload["trinh_do"],
+        created_by_id=current_user.id,
+        updated_by_id=current_user.id
     )
     db.session.add(emp)
     db.session.commit()
@@ -432,6 +580,7 @@ def employee_add():
 
 
 @app.route("/employees/edit/<int:emp_id>", methods=["POST"])
+@login_required
 def employee_edit(emp_id):
     emp = Employee.query.get_or_404(emp_id)
     payload = {
@@ -450,18 +599,22 @@ def employee_edit(emp_id):
     if trung:
         flash(f"Mã nhân viên '{payload['ma_nv']}' đã được sử dụng.", "danger")
         return redirect(url_for("employees_page"))
+    
     emp.ma_nv = payload["ma_nv"]
     emp.ho_ten = payload["ho_ten"]
     emp.email = payload["email"]
     emp.bo_phan = payload["bo_phan"]
     emp.vi_tri = payload["vi_tri"]
     emp.trinh_do = payload["trinh_do"]
+    emp.updated_by_id = current_user.id
+
     db.session.commit()
     flash("Đã cập nhật thông tin nhân viên.", "success")
     return redirect(url_for("employees_page"))
 
 
 @app.route("/employees/delete/<int:emp_id>", methods=["POST"])
+@login_required
 def employee_delete(emp_id):
     emp = Employee.query.get_or_404(emp_id)
     db.session.delete(emp)
@@ -471,6 +624,7 @@ def employee_delete(emp_id):
 
 
 @app.route("/tasks")
+@login_required
 def tasks_page():
     q = request.args.get("q", "").strip()
     detail_id = request.args.get("detail", type=int)
@@ -517,6 +671,7 @@ def tasks_page():
 
 
 @app.route("/tasks/add", methods=["POST"])
+@login_required
 def task_add():
     payload = {
         "ma_cv": normalize_text(request.form.get("ma_cv")),
@@ -540,6 +695,7 @@ def task_add():
     if ngay_gio is None:
         flash("Ngày công việc không đúng định dạng.", "danger")
         return redirect(url_for("tasks_page"))
+    
     task = Task(
         ma_cv=payload["ma_cv"],
         ten_cv=payload["ten_cv"],
@@ -550,6 +706,8 @@ def task_add():
         so_luong_nv=int(payload["so_luong_nv"]),
         thoi_luong=float(payload["thoi_luong"]),
         ca_requirement=payload["ca_requirement"],
+        created_by_id=current_user.id,
+        updated_by_id=current_user.id
     )
     db.session.add(task)
     db.session.commit()
@@ -559,6 +717,7 @@ def task_add():
 
 
 @app.route("/tasks/edit/<int:task_id>", methods=["POST"])
+@login_required
 def task_edit(task_id):
     task = Task.query.get_or_404(task_id)
     payload = {
@@ -596,6 +755,7 @@ def task_edit(task_id):
     new_ca = payload["ca_requirement"]
     task.ca_requirement = new_ca
     task.updated_at = datetime.utcnow()
+    task.updated_by_id = current_user.id
 
     if old_ca != new_ca:
         conflicts = []
@@ -612,6 +772,7 @@ def task_edit(task_id):
                     conflicts.append(f"{employee.ho_ten} ({employee.ma_nv})")
                 else:
                     sch.ca = new_ca
+                    sch.updated_by_id = current_user.id
         if conflicts:
             flash("Không thể cập nhật ca cho một số nhân viên do trùng ca: " + ", ".join(conflicts), "warning")
 
@@ -622,6 +783,7 @@ def task_edit(task_id):
 
 
 @app.route("/tasks/delete/<int:task_id>", methods=["POST"])
+@login_required
 def task_delete(task_id):
     task = Task.query.get_or_404(task_id)
     db.session.delete(task)
@@ -632,11 +794,13 @@ def task_delete(task_id):
 
 
 @app.route("/tasks/complete/<int:task_id>", methods=["POST"])
+@login_required
 def task_complete(task_id):
     task = Task.query.get_or_404(task_id)
     task.completed = True
     task.completed_at = datetime.utcnow()
     task.updated_at = datetime.utcnow()
+    task.updated_by_id = current_user.id
     db.session.commit()
     touch_last_update()
     flash(f"Đã đánh dấu công việc '{task.ten_cv}' hoàn thành.", "success")
@@ -644,6 +808,7 @@ def task_complete(task_id):
 
 
 @app.route("/tasks/history")
+@login_required
 def task_history():
     q = request.args.get("q", "").strip()
     detail_id = request.args.get("detail", type=int)
@@ -673,6 +838,7 @@ def task_history():
 
 
 @app.route("/tasks/assign")
+@login_required
 def task_assign():
     tasks = Task.query.filter_by(completed=False).order_by(Task.id.desc()).all()
     recent = (
@@ -695,7 +861,10 @@ def task_assign():
         trinh_do_list=TRINH_DO_LIST,
         vi_tri_map=VI_TRI_MAP,
     )
+
+
 @app.route("/tasks/assign/delete/<int:schedule_id>", methods=["POST"])
+@login_required
 def delete_assignment_route(schedule_id):
     sch = Schedule.query.get_or_404(schedule_id)
     task_id = sch.task_id
@@ -708,11 +877,11 @@ def delete_assignment_route(schedule_id):
         db.session.rollback()
         flash("Có lỗi xảy ra khi xóa!", "danger")
         
-    # request.referrer giúp tự động quay về trang bạn vừa bấm nút Xóa
     return redirect(request.referrer or url_for('tasks_page', detail=task_id))
 
-# --- ĐÃ SỬA: Lấy danh sách nhân viên chỉ phụ thuộc vào công việc ---
+
 @app.route("/tasks/assign/get-employees", methods=["POST"])
+@login_required
 def assign_get_employees():
     data = request.get_json()
     task_id = data.get("task_id")
@@ -721,14 +890,12 @@ def assign_get_employees():
     if not task:
         return jsonify({"error": "Công việc không tồn tại"}), 404
 
-    # Chỉ lọc nhân viên thuộc cùng bộ phận với công việc
     query = Employee.query
     if task.bo_phan:
         query = query.filter(Employee.bo_phan == task.bo_phan)
 
     employees = query.all()
 
-    # Tự động lấy ca quy định của công việc (mặc định 'Sáng')
     task_ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
     task_date = task.ngay_gio.date() if task.ngay_gio else None
 
@@ -753,7 +920,6 @@ def assign_get_employees():
             "msg": msg,
         })
 
-    # Đếm số nhân viên đã được phân công thực tế
     assigned_count = Schedule.query.filter_by(task_id=task.id).count()
 
     return jsonify({
@@ -766,6 +932,7 @@ def assign_get_employees():
 
 
 @app.route("/tasks/assign/ai-suggest", methods=["POST"])
+@login_required
 def assign_ai_suggest():
     data = request.get_json()
     task_id = data.get("task_id")
@@ -819,8 +986,8 @@ def assign_ai_suggest():
     return jsonify(scored[:task.so_luong_nv * 3])
 
 
-# --- ĐÃ SỬA: Kiểm tra chặt chẽ giới hạn số lượng nhân viên khi lưu ---
 @app.route("/tasks/assign/save", methods=["POST"])
+@login_required
 def assign_save():
     data = request.get_json()
     task_id = data.get("task_id")
@@ -834,7 +1001,6 @@ def assign_save():
 
     ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
 
-    # Đếm số lượng đã gán + số lượng đăng ký mới
     current_assigned_count = Schedule.query.filter_by(task_id=task.id).count()
     total_after_assign = current_assigned_count + len(employee_ids)
 
@@ -848,21 +1014,26 @@ def assign_save():
     errors = []
 
     for eid in employee_ids:
-        # Check xem nhân viên đã có trong task này chưa
         already_in_task = Schedule.query.filter_by(employee_id=eid, task_id=task_id).first()
         if already_in_task:
             emp = Employee.query.get(eid)
             errors.append(f"Nhân viên '{emp.ho_ten}' đã thuộc công việc này.")
             continue
 
-        # Check trùng ca làm việc trong ngày
         trung = check_trung_ca(eid, ngay, ca)
         if trung:
             emp = Employee.query.get(eid)
             errors.append(f"Nhân viên '{emp.ho_ten}' đã có lịch trùng ở ca {ca}.")
             continue
 
-        sch = Schedule(employee_id=eid, task_id=task_id, ngay_lam_viec=ngay, ca=ca)
+        sch = Schedule(
+            employee_id=eid, 
+            task_id=task_id, 
+            ngay_lam_viec=ngay, 
+            ca=ca,
+            created_by_id=current_user.id,
+            updated_by_id=current_user.id
+        )
         db.session.add(sch)
         assigned.append(eid)
 
@@ -872,6 +1043,7 @@ def assign_save():
 
 
 @app.route("/tasks/assign/auto-all", methods=["POST"])
+@login_required
 def auto_assign_all_tasks():
     tasks = Task.query.filter_by(completed=False).all()
     total_assigned = 0
@@ -880,7 +1052,7 @@ def auto_assign_all_tasks():
         if not task.ngay_gio:
             continue
         task_ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
-        assigned, _ = assign_task_ai(task, ca=task_ca)
+        assigned, _ = assign_task_ai(task, ca=task_ca, user_id=current_user.id)
         total_assigned += len(assigned)
 
     db.session.commit()
@@ -902,6 +1074,7 @@ def api_last_update():
 
 
 @app.route("/download-template/<string:template_type>")
+@login_required
 def download_template(template_type):
     if template_type == "employees":
         filename = "employees_sample.xlsx"
@@ -913,6 +1086,7 @@ def download_template(template_type):
 
 
 @app.route("/schedule/delete/<int:sch_id>", methods=["POST"])
+@login_required
 def schedule_delete(sch_id):
     sch = Schedule.query.get_or_404(sch_id)
     db.session.delete(sch)
@@ -923,6 +1097,7 @@ def schedule_delete(sch_id):
 
 
 @app.route("/reports")
+@login_required
 def reports_page():
     employees = Employee.query.order_by(Employee.ho_ten).all()
     stats = []
@@ -946,6 +1121,7 @@ def reports_page():
 
 
 @app.route("/api/check_conflict")
+@login_required
 def api_check_conflict():
     employee_id = request.args.get("employee_id", type=int)
     ngay_str = request.args.get("ngay_lam_viec")
@@ -968,6 +1144,7 @@ def dynamic_page(slug):
 
 
 @app.route("/pages/add", methods=["POST"])
+@login_required
 def page_add():
     slug = request.form.get("slug", "").strip()
     tieu_de = request.form.get("tieu_de", "").strip()
@@ -986,6 +1163,7 @@ def page_add():
 
 
 @app.route("/import-data", methods=["GET", "POST"])
+@login_required
 def import_data_page():
     imported_count = 0
     updated_count = 0
@@ -1043,9 +1221,6 @@ def import_data_page():
             flash("Không tìm thấy dữ liệu hợp lệ trong file hoặc đoạn văn bản đã nhập.", "danger")
             return redirect(url_for("import_data_page"))
 
-        # -----------------------------------------------------------------
-        # 1. NHẬP / CẬP NHẬT NHÂN VIÊN (EMPLOYEES)
-        # -----------------------------------------------------------------
         if import_type == "employees":
             for row in rows:
                 payload = {
@@ -1063,20 +1238,22 @@ def import_data_page():
                     summary.append({"row": row, "errors": errors})
                     continue
 
-                # Tìm nhân viên đã tồn tại chưa
                 existing_emp = Employee.query.filter_by(ma_nv=payload["ma_nv"]).first()
 
                 if existing_emp:
-                    # 🔄 CẬP NHẬT thông tin nhân viên đã có
                     existing_emp.ho_ten = payload["ho_ten"]
                     existing_emp.email = payload["email"]
                     existing_emp.bo_phan = payload["bo_phan"]
                     existing_emp.vi_tri = payload["vi_tri"]
                     existing_emp.trinh_do = payload["trinh_do"]
+                    existing_emp.updated_by_id = current_user.id
                     updated_count += 1
                 else:
-                    # ➕ THÊM MỚI nhân viên
-                    employee = Employee(**payload)
+                    employee = Employee(
+                        **payload,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id
+                    )
                     db.session.add(employee)
                     imported_count += 1
 
@@ -1086,9 +1263,6 @@ def import_data_page():
                 "success"
             )
 
-        # -----------------------------------------------------------------
-        # 2. NHẬP / CẬP NHẬT CÔNG VIỆC (TASKS)
-        # -----------------------------------------------------------------
         else:
             for row in rows:
                 payload = {
@@ -1117,7 +1291,6 @@ def import_data_page():
                 existing_task = Task.query.filter_by(ma_cv=payload["ma_cv"]).first()
 
                 if existing_task:
-                    # 🔄 CẬP NHẬT thông tin công việc đã có
                     existing_task.ten_cv = payload["ten_cv"]
                     existing_task.ghi_chu = payload["ghi_chu"]
                     existing_task.do_uu_tien = payload["do_uu_tien"]
@@ -1125,9 +1298,9 @@ def import_data_page():
                     existing_task.bo_phan = payload["bo_phan"]
                     existing_task.so_luong_nv = int(payload["so_luong_nv"])
                     existing_task.thoi_luong = float(payload["thoi_luong"])
+                    existing_task.updated_by_id = current_user.id
                     updated_count += 1
                 else:
-                    # ➕ THÊM MỚI công việc
                     task = Task(
                         ma_cv=payload["ma_cv"],
                         ten_cv=payload["ten_cv"],
@@ -1137,6 +1310,8 @@ def import_data_page():
                         bo_phan=payload["bo_phan"],
                         so_luong_nv=int(payload["so_luong_nv"]),
                         thoi_luong=float(payload["thoi_luong"]),
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id
                     )
                     db.session.add(task)
                     imported_count += 1
@@ -1172,12 +1347,28 @@ def ensure_task_schema():
         if "updated_at" not in columns:
             conn.execute(text("ALTER TABLE task ADD COLUMN updated_at DATETIME"))
             conn.execute(text("UPDATE task SET updated_at = created_at WHERE updated_at IS NULL"))
+        if "created_by_id" not in columns:
+            conn.execute(text("ALTER TABLE task ADD COLUMN created_by_id INTEGER REFERENCES users(id)"))
+        if "updated_by_id" not in columns:
+            conn.execute(text("ALTER TABLE task ADD COLUMN updated_by_id INTEGER REFERENCES users(id)"))
+
+        result = conn.execute(text("PRAGMA table_info(employee)"))
+        emp_columns = [row[1] for row in result]
+        if "created_by_id" not in emp_columns:
+            conn.execute(text("ALTER TABLE employee ADD COLUMN created_by_id INTEGER REFERENCES users(id)"))
+        if "updated_by_id" not in emp_columns:
+            conn.execute(text("ALTER TABLE employee ADD COLUMN updated_by_id INTEGER REFERENCES users(id)"))
 
         result = conn.execute(text("PRAGMA table_info(schedule)"))
         schedule_columns = [row[1] for row in result]
         if "updated_at" not in schedule_columns:
             conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_at DATETIME"))
             conn.execute(text("UPDATE schedule SET updated_at = created_at WHERE updated_at IS NULL"))
+        if "created_by_id" not in schedule_columns:
+            conn.execute(text("ALTER TABLE schedule ADD COLUMN created_by_id INTEGER REFERENCES users(id)"))
+        if "updated_by_id" not in schedule_columns:
+            conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_by_id INTEGER REFERENCES users(id)"))
+
         conn.execute(text("UPDATE task SET ca_requirement='Sáng' WHERE ca_requirement NOT IN ('Sáng','Chiều') OR ca_requirement IS NULL"))
 
 
