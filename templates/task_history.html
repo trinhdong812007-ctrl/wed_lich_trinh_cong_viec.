@@ -37,7 +37,7 @@
           <td><span class="chip chip-blue">{{ t.ma_cv }}</span></td>
           <td><a href="?detail={{ t.id }}" class="task-link">{{ t.ten_cv }}</a></td>
           <td>{{ t.bo_phan or '-' }}</td>
-          <td>{{ t.ngay_gio.strftime('%d/%m/%Y') if t.ngay_gio else '-' }}</td>
+          <td>{{ t.ngay_gio.strftime('%d/%m/%Y') if t.ngay_gio else 'Theo TKB' }}</td>
           <td>{{ t.completed_at.strftime('%d/%m/%Y %H:%M') if t.completed_at else '-' }}</td>
           <td>
             {% set bg = {'Khẩn cấp': 'rgba(239,68,68,0.18)', 'Cao': 'rgba(245,158,11,0.18)', 'Trung bình': 'rgba(59,130,246,0.18)', 'Thấp': 'rgba(107,114,128,0.18)'} %}

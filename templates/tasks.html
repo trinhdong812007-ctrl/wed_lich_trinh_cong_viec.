@@ -25,11 +25,6 @@
       <a class="btn btn-outline-secondary" href="{{ url_for('import_data_page') }}">
         <i class="bi bi-cloud-arrow-up"></i> Nhập hàng loạt
       </a>
-      <form method="POST" action="{{ url_for('auto_assign_all_tasks') }}" class="d-flex" style="gap:8px; margin:0;">
-        <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Xác nhận AI phân công công việc theo ca đã thiết lập?');">
-          <i class="bi bi-robot"></i> AI phân công
-        </button>
-      </form>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
         <i class="bi bi-plus-lg"></i> Thêm công việc
       </button>
@@ -40,7 +35,7 @@
     <table class="table-generic">
       <thead>
         <tr>
-          <th>Mã CV</th><th>Tiêu đề</th><th>Ghi chú</th><th>Bộ phận</th><th>Ngày</th><th>Ca làm</th><th>Ưu tiên</th><th>SL NV</th><th style="text-align:right">Thao tác</th>
+          <th>Mã CV</th><th>Tiêu đề</th><th>Ghi chú</th><th>Bộ phận</th><th>Ưu tiên</th><th>SL NV</th><th style="text-align:right">Thao tác</th>
         </tr>
       </thead>
       <tbody>
@@ -50,8 +45,6 @@
           <td><a href="?detail={{ t.id }}" class="task-link">{{ t.ten_cv }}</a></td>
           <td class="text-muted" style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.ghi_chu or '-' }}</td>
           <td>{{ t.bo_phan or '-' }}</td>
-          <td>{{ t.ngay_gio.strftime('%d/%m/%Y') if t.ngay_gio else '-' }}</td>
-          <td>{{ t.ca_requirement or 'Sáng' }}</td>
           <td>
             {% set bg = {'Khẩn cấp': 'rgba(239,68,68,0.18)', 'Cao': 'rgba(245,158,11,0.18)', 'Trung bình': 'rgba(59,130,246,0.18)', 'Thấp': 'rgba(107,114,128,0.18)'} %}
             {% set color = {'Khẩn cấp': '#ef4444', 'Cao': '#f59e0b', 'Trung bình': '#3b82f6', 'Thấp': '#6b7280'} %}
@@ -59,7 +52,7 @@
           </td>
           <td>{{ t.so_luong_nv }}</td>
           <td style="text-align:right" onclick="event.stopPropagation()">
-            <form method="POST" action="{{ url_for('task_complete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Đánh dấu công việc {{ t.ten_cv }} hoàn thành? Lịch trình liên quan sẽ bị xóa.');">
+            <form method="POST" action="{{ url_for('task_complete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Đánh dấu công việc {{ t.ten_cv }} hoàn thành?');">
               <button class="action-btn" style="color:var(--green)" title="Hoàn thành"><i class="bi bi-check-lg"></i></button>
             </form>
             <a href="{{ url_for('task_assign') }}?task_id={{ t.id }}" class="action-btn" title="Phân công"><i class="bi bi-person-plus"></i></a>
@@ -80,20 +73,10 @@
                   <div class="mb-2"><label class="form-label">Mã công việc</label><input class="form-control" name="ma_cv" value="{{ t.ma_cv }}" required></div>
                   <div class="mb-2"><label class="form-label">Tiêu đề</label><input class="form-control" name="ten_cv" value="{{ t.ten_cv }}" required></div>
                   <div class="mb-2"><label class="form-label">Ghi chú</label><textarea class="form-control" name="ghi_chu" rows="2">{{ t.ghi_chu or '' }}</textarea></div>
-                  <div class="mb-2"><label class="form-label">Ngày</label><input class="form-control" type="date" name="ngay_gio" value="{{ t.ngay_gio.strftime('%Y-%m-%d') if t.ngay_gio else '' }}" required></div>
-                  <div class="mb-2"><label class="form-label">Ca làm việc</label>
-                    <select class="form-select" name="ca_requirement" required>
-                      <option value="Sáng" {{ 'selected' if t.ca_requirement=='Sáng' }}>Ca sáng</option>
-                      <option value="Chiều" {{ 'selected' if t.ca_requirement=='Chiều' }}>Ca chiều</option>
-                    </select>
-                  </div>
                   <div class="mb-2"><label class="form-label">Bộ phận</label>
-                    <select class="form-select" name="bo_phan" required>
-                      <option value="">-- Chọn bộ phận --</option>
-                      {% for bp in vi_tri_map.keys() %}
-                      <option value="{{ bp }}" {{ 'selected' if t.bo_phan==bp }}>{{ bp }}</option>
-                      {% endfor %}
-                    </select>
+                    <div class="multi-select-bo-phan" id="edit_ms_bp_{{ t.id }}">
+                      <input type="hidden" name="bo_phan" value="{{ t.bo_phan or '' }}">
+                    </div>
                   </div>
                   <div class="row g-2">
                     <div class="col">
@@ -122,7 +105,7 @@
           </div>
         </div>
         {% else %}
-        <tr><td colspan="9" class="text-center text-muted py-4">Không có công việc nào.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Không có công việc nào.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -166,18 +149,6 @@
           </div>
           <div class="col-md-4">
             <div class="detail-field">
-              <div class="detail-label">Ngày</div>
-              <div class="detail-value">{{ detail_task.ngay_gio.strftime('%d/%m/%Y') if detail_task.ngay_gio else 'Chưa đặt ngày' }}</div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="detail-field">
-              <div class="detail-label">Ca làm việc</div>
-              <div class="detail-value">{{ detail_task.ca_requirement or 'Sáng' }}</div>
-            </div>
-          </div>
-          <div class="col-md-4">
-            <div class="detail-field">
               <div class="detail-label">Độ ưu tiên</div>
               <div class="detail-value">
                 <span class="priority-tag" style="background:{{ do_uu_tien_bg.get(detail_task.do_uu_tien, 'rgba(59,130,246,0.18)') }};color:{{ do_uu_tien_colors.get(detail_task.do_uu_tien, '#3b82f6') }}">{{ detail_task.do_uu_tien }}</span>
@@ -213,7 +184,6 @@
               <th>Nhân viên</th>
               <th>Mã NV</th>
               <th>Vị trí</th>
-              <th>Trình độ</th>
               <th>Ngày</th>
               <th>Ca</th>
               <th style="text-align:right">Thao tác</th>
@@ -225,11 +195,6 @@
               <td>{{ emp.ho_ten }}</td>
               <td><span class="chip chip-blue">{{ emp.ma_nv }}</span></td>
               <td>{{ emp.vi_tri or '-' }}</td>
-              <td>
-                <span class="chip" style="background:rgba(56, 189, 248, 0.15); color:#38bdf8; border:1px solid rgba(56, 189, 248, 0.3);">
-                  {{ emp.trinh_do or 'Cơ bản' }}
-                </span>
-              </td>
               <td>{{ s.ngay_lam_viec.strftime('%d/%m/%Y') }}</td>
               <td><span class="badge-ca {{ 'badge-sang' if s.ca=='Sáng' else 'badge-chieu' }}">{{ s.ca }}</span></td>
               <td style="text-align:right">
@@ -266,20 +231,10 @@
           <div class="mb-2"><label class="form-label">Mã công việc</label><input class="form-control" name="ma_cv" placeholder="VD: CV011" required></div>
           <div class="mb-2"><label class="form-label">Tiêu đề</label><input class="form-control" name="ten_cv" required></div>
           <div class="mb-2"><label class="form-label">Ghi chú</label><textarea class="form-control" name="ghi_chu" rows="2" placeholder="Nhập ghi chú cho công việc..."></textarea></div>
-          <div class="mb-2"><label class="form-label">Ngày</label><input class="form-control" type="date" name="ngay_gio" required></div>
-          <div class="mb-2"><label class="form-label">Ca làm việc</label>
-            <select class="form-select" name="ca_requirement" required>
-              <option value="Sáng">Ca sáng</option>
-              <option value="Chiều">Ca chiều</option>
-            </select>
-          </div>
           <div class="mb-2"><label class="form-label">Bộ phận</label>
-            <select class="form-select" name="bo_phan" required>
-              <option value="">-- Chọn bộ phận --</option>
-              {% for bp in vi_tri_map.keys() %}
-              <option value="{{ bp }}">{{ bp }}</option>
-              {% endfor %}
-            </select>
+            <div class="multi-select-bo-phan" id="add_ms_bp">
+              <input type="hidden" name="bo_phan" value="">
+            </div>
           </div>
           <div class="row g-2">
             <div class="col">
@@ -337,6 +292,28 @@ document.querySelectorAll('.task-row').forEach(function(row) {
   row.addEventListener('click', function() {
     var taskId = this.dataset.taskId;
     window.location.href = '?detail=' + taskId;
+  });
+});
+
+const BP_OPTIONS = {{ vi_tri_map.keys() | list | tojson }};
+const msBPInstances = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+  const addContainer = document.getElementById('add_ms_bp');
+  if (addContainer) {
+    msBPInstances['add_ms_bp'] = initMultiSelect(addContainer, BP_OPTIONS, {
+      selected: [],
+      placeholder: "Chon bo phan...",
+    });
+  }
+
+  document.querySelectorAll('[id^="edit_ms_bp_"]').forEach(function(el) {
+    const hiddenInput = el.querySelector('input[type="hidden"]');
+    const vals = hiddenInput ? hiddenInput.value.split(/,\s*/).filter(Boolean) : [];
+    msBPInstances[el.id] = initMultiSelect(el, BP_OPTIONS, {
+      selected: vals,
+      placeholder: "Chon bo phan...",
+    });
   });
 });
 </script>

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="panel">
   <div class="alert alert-info" role="alert">
-    <strong>Hướng dẫn:</strong> Bạn có thể nhập từ file CSV hoặc XLSX, hoặc dán nội dung CSV trực tiếp. Mỗi bảng dữ liệu phải có hàng tiêu đề hợp lệ và ít nhất các trường bắt buộc: mã, tên, bộ phận. Các trường còn lại có thể được điền tự động nếu phù hợp.
+    <strong>Hướng dẫn:</strong> Bạn có thể nhập từ file CSV hoặc XLSX, hoặc dán nội dung CSV trực tiếp. Mỗi bảng dữ liệu phải có hàng tiêu đề hợp lệ và ít nhất các trường bắt buộc: mã, tên, bộ phận. Cột <code>vi_tri</code> có thể kèm trình độ trong ngoặc, ví dụ: <code>Nhân viên IT(Khá)</code>, <code>Kỹ sư(Chuyên gia)</code>.
   </div>
 
   <form method="POST" enctype="multipart/form-data" class="row g-3">
@@ -14,6 +14,7 @@
       <select class="form-select" name="import_type">
         <option value="employees" {{ 'selected' if import_type == 'employees' }}>Nhân viên</option>
         <option value="tasks" {{ 'selected' if import_type == 'tasks' }}>Công việc</option>
+        <option value="tkb_tuan" disabled>📋 TKB tuần (dùng menu "TKB tuần")</option>
       </select>
     </div>
     <div class="col-md-4">
@@ -33,7 +34,7 @@
     </div>
     <div class="col-12">
       <label class="form-label">Dán dữ liệu CSV</label>
-      <textarea class="form-control" name="raw_data" rows="6" placeholder="Ví dụ: ma_nv,ho_ten,bo_phan,vi_tri,trinh_do\nNV001,Nguyễn Văn A,IT Support,Nhân viên IT,Khá">{{ request.form.get('raw_data', '') }}</textarea>
+      <textarea class="form-control" name="raw_data" rows="6" placeholder="Ví dụ: ma_nv,ho_ten,bo_phan,vi_tri\nNV001,Nguyễn Văn A,IT Support,Nhân viên IT(Khá)\nNV002,Trần Thị B,Kỹ thuật,Kỹ sư(Chuyên gia)">{{ request.form.get('raw_data', '') }}</textarea>
     </div>
     <div class="col-12">
       <button class="btn btn-primary" type="submit"><i class="bi bi-cloud-arrow-up"></i> Nhập dữ liệu</button>

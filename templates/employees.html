@@ -23,7 +23,7 @@
     <table class="table-generic">
       <thead>
         <tr>
-          <th>Mã NV</th><th>Họ tên</th><th>Email</th><th>Bộ phận</th><th>Vị trí</th><th>Trình độ</th><th style="text-align:right">Thao tác</th>
+          <th>Mã NV</th><th>Họ tên</th><th>Email</th><th>Bộ phận</th><th>Vị trí (Trình độ)</th><th style="text-align:right">Thao tác</th>
         </tr>
       </thead>
       <tbody>
@@ -34,12 +34,6 @@
           <td>{{ e.email or '-' }}</td>
           <td>{{ e.bo_phan or '-' }}</td>
           <td>{{ e.vi_tri or '-' }}</td>
-          <td>
-            {% if e.trinh_do == 'Chuyên gia' %}<span class="chip chip-red">{{ e.trinh_do }}</span>
-            {% elif e.trinh_do == 'Thành thạo' %}<span class="chip chip-orange">{{ e.trinh_do }}</span>
-            {% elif e.trinh_do == 'Khá' %}<span class="chip chip-green">{{ e.trinh_do }}</span>
-            {% else %}<span class="chip chip-gray">{{ e.trinh_do }}</span>{% endif %}
-          </td>
           <td style="text-align:right">
             <button class="action-btn" data-bs-toggle="modal" data-bs-target="#editEmployeeModal{{ e.id }}"><i class="bi bi-pencil"></i></button>
             <form method="POST" action="{{ url_for('employee_delete', emp_id=e.id) }}" class="d-inline" onsubmit="return confirm('Xoa nhan vien {{ e.ho_ten }}?');">
@@ -66,21 +60,9 @@
                     </select>
                   </div>
                   <div class="mb-2"><label class="form-label">Vị trí</label>
-                    <select class="form-select edit-vi-tri" name="vi_tri" id="edit_vi_tri_{{ e.id }}" required>
-                      <option value="">-- Chọn vị trí --</option>
-                      {% if e.bo_phan and e.bo_phan in vi_tri_map %}
-                        {% for vt in vi_tri_map[e.bo_phan] %}
-                        <option value="{{ vt }}" {{ 'selected' if e.vi_tri==vt }}>{{ vt }}</option>
-                        {% endfor %}
-                      {% endif %}
-                    </select>
-                  </div>
-                  <div class="mb-2"><label class="form-label">Trình độ</label>
-                    <select class="form-select" name="trinh_do" required>
-                      {% for td in trinh_do_list %}
-                      <option value="{{ td }}" {{ 'selected' if e.trinh_do==td }}>{{ td }}</option>
-                      {% endfor %}
-                    </select>
+                    <div class="multi-select-vi-tri" id="edit_ms_vi_tri_{{ e.id }}">
+                      <input type="hidden" name="vi_tri" value="{{ e.vi_tri or '' }}">
+                    </div>
                   </div>
                 </div>
                 <div class="modal-footer">
@@ -92,7 +74,7 @@
           </div>
         </div>
         {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Không có nhân viên nào.</td></tr>
+        <tr><td colspan="6" class="text-center text-muted py-4">Không có nhân viên nào.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -117,16 +99,9 @@
             </select>
           </div>
           <div class="mb-2"><label class="form-label">Vị trí</label>
-            <select class="form-select" id="add_vi_tri" name="vi_tri" required>
-              <option value="">-- Chọn bộ phận trước --</option>
-            </select>
-          </div>
-          <div class="mb-2"><label class="form-label">Trình độ</label>
-            <select class="form-select" name="trinh_do" required>
-              {% for td in trinh_do_list %}
-              <option value="{{ td }}" {{ 'selected' if td=='Cơ bản' }}>{{ td }}</option>
-              {% endfor %}
-            </select>
+            <div class="multi-select-vi-tri" id="add_ms_vi_tri">
+              <input type="hidden" name="vi_tri" value="">
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -142,32 +117,61 @@
 {% block scripts %}
 <script>
 const VI_TRI_MAP = {{ vi_tri_map | tojson }};
+const TRINH_DO_LIST = {{ trinh_do_list | tojson }};
+const msInstances = {};
 
-function updateViTri(boPhanSelect, viTriSelect) {
-  const bp = boPhanSelect.value;
-  viTriSelect.innerHTML = '<option value="">-- Chọn vị trí --</option>';
-  if (bp && VI_TRI_MAP[bp]) {
-    VI_TRI_MAP[bp].forEach(function(vt) {
-      const opt = document.createElement('option');
-      opt.value = vt;
-      opt.textContent = vt;
-      viTriSelect.appendChild(opt);
-    });
+function getViTriOptions(boPhan) {
+  if (boPhan && VI_TRI_MAP[boPhan]) {
+    return VI_TRI_MAP[boPhan];
+  }
+  return Object.values(VI_TRI_MAP).flat();
+}
+
+function initViTriMultiSelect(containerId, selectedValues) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const boPhanSelect = containerId.startsWith('add_')
+    ? document.getElementById('add_bo_phan')
+    : document.querySelector(`.edit-bo-phan[data-target="${containerId.replace('edit_ms_vi_tri_', '')}"]`);
+  const currentBoPhan = boPhanSelect ? boPhanSelect.value : '';
+  const options = getViTriOptions(currentBoPhan);
+  const sel = selectedValues ? selectedValues.split(/,\s*/).filter(Boolean) : [];
+  msInstances[containerId] = initMultiSelect(container, options, {
+    selected: sel,
+    placeholder: "Tim vi tri...",
+    positionMode: true,
+    levelList: TRINH_DO_LIST,
+  });
+}
+
+function updateViTriOptions(containerId, boPhan) {
+  const inst = msInstances[containerId];
+  if (inst) {
+    inst.setOptions(getViTriOptions(boPhan));
+    inst.setSelected([]);
   }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  initViTriMultiSelect('add_ms_vi_tri', '');
+
+  document.querySelectorAll('[id^="edit_ms_vi_tri_"]').forEach(function(el) {
+    const eid = el.id.replace('edit_ms_vi_tri_', '');
+    const hiddenInput = el.querySelector('input[type="hidden"]');
+    initViTriMultiSelect(el.id, hiddenInput ? hiddenInput.value : '');
+  });
+
   const addBoPhan = document.getElementById('add_bo_phan');
-  const addViTri = document.getElementById('add_vi_tri');
-  if (addBoPhan && addViTri) {
-    addBoPhan.addEventListener('change', function() { updateViTri(addBoPhan, addViTri); });
+  if (addBoPhan) {
+    addBoPhan.addEventListener('change', function() {
+      updateViTriOptions('add_ms_vi_tri', this.value);
+    });
   }
 
   document.querySelectorAll('.edit-bo-phan').forEach(function(sel) {
     sel.addEventListener('change', function() {
       const targetId = this.getAttribute('data-target');
-      const viTriSelect = document.getElementById('edit_vi_tri_' + targetId);
-      if (viTriSelect) updateViTri(this, viTriSelect);
+      updateViTriOptions('edit_ms_vi_tri_' + targetId, this.value);
     });
   });
 });

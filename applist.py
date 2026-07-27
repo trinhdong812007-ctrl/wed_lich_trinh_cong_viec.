@@ -11,7 +11,7 @@ import openpyxl
 from openpyxl import load_workbook
 from datetime import datetime, timedelta, date
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, text
 
@@ -67,7 +67,7 @@ def load_user(user_id):
 
 
 CA_LAM_VIEC = {"Sáng": "07:30 - 11:30", "Chiều": "13:00 - 17:00"}
-THU_TRONG_TUAN = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"]
+THU_TRONG_TUAN = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
 DO_UU_TIEN_LIST = ["Thấp", "Trung bình", "Cao", "Khẩn cấp"]
 TRINH_DO_LIST = ["Cơ bản", "Khá", "Thành thạo", "Chuyên gia"]
 
@@ -90,7 +90,7 @@ class Employee(db.Model):
     email = db.Column(db.String(120))
     bo_phan = db.Column(db.String(80))
     vi_tri = db.Column(db.String(80))
-    trinh_do = db.Column(db.String(20), default="Cơ bản")
+    trinh_do = db.Column(db.String(20), default="Cơ bản")  # Kept for backward compat; level now embedded in vi_tri
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
@@ -108,7 +108,6 @@ class Employee(db.Model):
             "email": self.email,
             "bo_phan": self.bo_phan,
             "vi_tri": self.vi_tri,
-            "trinh_do": self.trinh_do,
         }
 
 
@@ -143,11 +142,30 @@ class Task(db.Model):
             "ten_cv": self.ten_cv,
             "ghi_chu": self.ghi_chu,
             "do_uu_tien": self.do_uu_tien,
-            "ngay_gio": self.ngay_gio.strftime("%Y-%m-%d") if self.ngay_gio else "",
             "bo_phan": self.bo_phan,
             "so_luong_nv": self.so_luong_nv,
             "thoi_luong": self.thoi_luong,
         }
+
+
+class WeekSchedule(db.Model):
+    __tablename__ = "week_schedule"
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
+    ngay_lam_viec = db.Column(db.Date, nullable=False)
+    ca = db.Column(db.String(10), nullable=False)
+    vi_tri = db.Column(db.Integer, default=1)
+    week_start = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+
+    task = db.relationship("Task", backref="week_schedules")
+    creator = db.relationship('User', foreign_keys=[created_by_id])
+    updater = db.relationship('User', foreign_keys=[updated_by_id])
+
+    __table_args__ = (db.UniqueConstraint("task_id", "ngay_lam_viec", "ca", name="uq_week_schedule"),)
 
 
 class Schedule(db.Model):
@@ -157,12 +175,14 @@ class Schedule(db.Model):
     task_id = db.Column(db.Integer, db.ForeignKey("task.id"), nullable=False)
     ngay_lam_viec = db.Column(db.Date, nullable=False)
     ca = db.Column(db.String(10), nullable=False)
+    week_schedule_id = db.Column(db.Integer, db.ForeignKey("week_schedule.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
+    week_schedule_rel = db.relationship("WeekSchedule", backref="schedules")
     creator = db.relationship('User', foreign_keys=[created_by_id])
     updater = db.relationship('User', foreign_keys=[updated_by_id])
     __table_args__ = (db.UniqueConstraint("employee_id", "ngay_lam_viec", "ca", name="uq_emp_day_ca"),)
@@ -214,6 +234,17 @@ def parse_date_value(value):
             return None
 
 
+def parse_vi_tri_with_level(vi_tri_str):
+    import re
+    match = re.match(r'^(.+)\(([^)]+)\)$', vi_tri_str)
+    if match:
+        position = match.group(1).strip()
+        level = match.group(2).strip()
+        if level in TRINH_DO_LIST:
+            return position, level
+    return vi_tri_str, "Cơ bản"
+
+
 def validate_employee_payload(data):
     errors = []
     ma_nv = normalize_text(data.get("ma_nv"))
@@ -221,7 +252,6 @@ def validate_employee_payload(data):
     email = normalize_text(data.get("email"))
     bo_phan = normalize_text(data.get("bo_phan"))
     vi_tri = normalize_text(data.get("vi_tri"))
-    trinh_do = normalize_text(data.get("trinh_do"))
 
     if not ma_nv:
         errors.append("Mã nhân viên là bắt buộc.")
@@ -233,14 +263,8 @@ def validate_employee_payload(data):
         errors.append("Bộ phận là bắt buộc.")
     if not vi_tri:
         errors.append("Vị trí là bắt buộc.")
-    if not trinh_do:
-        errors.append("Trình độ là bắt buộc.")
     if bo_phan and bo_phan not in VI_TRI_MAP:
         errors.append("Bộ phận không hợp lệ.")
-    if bo_phan and vi_tri and bo_phan in VI_TRI_MAP and vi_tri not in VI_TRI_MAP[bo_phan]:
-        errors.append("Vị trí không phù hợp với bộ phận đã chọn.")
-    if trinh_do and trinh_do not in TRINH_DO_LIST:
-        errors.append("Trình độ không hợp lệ.")
     return errors
 
 
@@ -260,14 +284,10 @@ def validate_task_payload(data):
         errors.append("Tên công việc là bắt buộc.")
     if not do_uu_tien:
         errors.append("Độ ưu tiên là bắt buộc.")
-    if not ngay_gio:
-        errors.append("Ngày công việc là bắt buộc.")
     if not bo_phan:
         errors.append("Bộ phận là bắt buộc.")
     if do_uu_tien and do_uu_tien not in DO_UU_TIEN_LIST:
         errors.append("Độ ưu tiên không hợp lệ.")
-    if bo_phan and bo_phan not in VI_TRI_MAP:
-        errors.append("Bộ phận không hợp lệ.")
 
     try:
         so_luong_nv_i = int(so_luong_nv)
@@ -297,29 +317,37 @@ def check_trung_ca(employee_id, ngay_lam_viec, ca, exclude_id=None):
     return query.first()
 
 
-def get_ai_suggested_employee_ids(task, ca="Sáng", limit=None):
+def get_department_filter(task):
+    if not task.bo_phan:
+        return []
+    departments = [d.strip() for d in task.bo_phan.split(",")]
+    return [d for d in departments if d]
+
+
+def get_ai_suggested_employee_ids(task, ngay_lam_viec, ca="Sáng", limit=None):
     if not task:
         return []
     query = Employee.query
-    if task.bo_phan:
-        query = query.filter(Employee.bo_phan == task.bo_phan)
+    departments = get_department_filter(task)
+    if departments:
+        query = query.filter(Employee.bo_phan.in_(departments))
     employees = query.all()
-    task_date = task.ngay_gio.date() if task.ngay_gio else None
     scored = []
     for emp in employees:
         score = 0
-        if emp.trinh_do == "Chuyên gia":
+        _, trinh_do = parse_vi_tri_with_level(emp.vi_tri or "")
+        if trinh_do == "Chuyên gia":
             score += 40
-        elif emp.trinh_do == "Thành thạo":
+        elif trinh_do == "Thành thạo":
             score += 30
-        elif emp.trinh_do == "Khá":
+        elif trinh_do == "Khá":
             score += 20
-        elif emp.trinh_do == "Cơ bản":
+        elif trinh_do == "Cơ bản":
             score += 10
 
         available = True
-        if task_date:
-            existing = check_trung_ca(emp.id, task_date, ca)
+        if ngay_lam_viec:
+            existing = check_trung_ca(emp.id, ngay_lam_viec, ca)
             if existing:
                 available = False
                 score -= 100
@@ -332,36 +360,32 @@ def get_ai_suggested_employee_ids(task, ca="Sáng", limit=None):
     scored.sort(key=lambda x: x["score"], reverse=True)
     suggested = [item["id"] for item in scored if item["available"]]
     
-    current_assigned_count = Schedule.query.filter_by(task_id=task.id).count()
-    remaining_slots = max(0, task.so_luong_nv - current_assigned_count)
-
-    if limit:
-        suggested = suggested[:min(limit, remaining_slots)]
-    else:
-        suggested = suggested[:remaining_slots]
     return suggested
 
 
-def assign_task_ai(task, ca="Sáng", user_id=None):
-    if not task or not task.ngay_gio:
-        return [], ["Công việc thiếu ngày hoặc không tồn tại."]
-    requested_ca = ca if ca in ["Sáng", "Chiều"] else task.ca_requirement or "Sáng"
-    suggested_ids = get_ai_suggested_employee_ids(task, ca=requested_ca)
+def assign_task_ai(ws_entry, user_id=None):
+    if not ws_entry:
+        return [], ["Không tìm thấy lịch tuần."]
+    task = ws_entry.task
+    ca = ws_entry.ca
+    ngay = ws_entry.ngay_lam_viec
+    suggested_ids = get_ai_suggested_employee_ids(task, ngay, ca=ca)
     if not suggested_ids:
-        return [], ["Không tìm thấy nhân viên phù hợp hoặc đã đủ số lượng."]
+        return [], ["Không tìm thấy nhân viên phù hợp."]
 
     assigned = []
     errors = []
     for eid in suggested_ids:
-        if check_trung_ca(eid, task.ngay_gio.date(), requested_ca):
+        if check_trung_ca(eid, ngay, ca):
             emp = Employee.query.get(eid)
-            errors.append(f"Nhân viên '{emp.ho_ten}' đã có lịch ca {requested_ca}.")
+            errors.append(f"Nhân viên '{emp.ho_ten}' đã có lịch ca {ca}.")
             continue
         db.session.add(Schedule(
             employee_id=eid, 
             task_id=task.id, 
-            ngay_lam_viec=task.ngay_gio.date(), 
-            ca=requested_ca,
+            ngay_lam_viec=ngay, 
+            ca=ca,
+            week_schedule_id=ws_entry.id,
             created_by_id=user_id,
             updated_by_id=user_id
         ))
@@ -370,17 +394,17 @@ def assign_task_ai(task, ca="Sáng", user_id=None):
 
 
 DO_UU_TIEN_COLORS = {
-    "Khẩn cấp": "#ef4444",
-    "Cao": "#f59e0b",
-    "Trung bình": "#3b82f6",
-    "Thấp": "#94a3b8",
+    "Khẩn cấp": "#fca5a5",
+    "Cao": "#fcd34d",
+    "Trung bình": "#93c5fd",
+    "Thấp": "#cbd5e1",
 }
 
 DO_UU_TIEN_BG = {
-    "Khẩn cấp": "rgba(239,68,68,0.18)",
-    "Cao": "rgba(245,158,11,0.18)",
-    "Trung bình": "rgba(59,130,246,0.18)",
-    "Thấp": "rgba(148,163,184,0.18)",
+    "Khẩn cấp": "rgba(239,68,68,0.35)",
+    "Cao": "rgba(245,158,11,0.35)",
+    "Trung bình": "rgba(59,130,246,0.30)",
+    "Thấp": "rgba(148,163,184,0.25)",
 }
 
 TRINH_DO_ORDER = {"Cơ bản": 1, "Khá": 2, "Thành thạo": 3, "Chuyên gia": 4}
@@ -512,31 +536,72 @@ def lich_trinh():
     else:
         anchor = date.today()
     week_start = get_week_start(anchor)
-    week_dates = [week_start + timedelta(days=i) for i in range(6)]
+    week_dates = [week_start + timedelta(days=i) for i in range(7)]
 
-    tasks_in_week = Task.query.filter(
-        Task.ngay_gio >= week_dates[0],
-        Task.ngay_gio <= week_dates[-1],
+    schedule_entries = db.session.query(Schedule, Employee, Task).join(
+        Employee, Schedule.employee_id == Employee.id
+    ).join(
+        Task, Schedule.task_id == Task.id
+    ).filter(
+        Schedule.ngay_lam_viec >= week_dates[0],
+        Schedule.ngay_lam_viec <= week_dates[-1],
         Task.completed == False
-    ).order_by(Task.ngay_gio, Task.ca_requirement).all()
+    ).order_by(Schedule.ngay_lam_viec, Schedule.ca).all()
+
+    week_schedule_entries = WeekSchedule.query.filter(
+        WeekSchedule.ngay_lam_viec >= week_dates[0],
+        WeekSchedule.ngay_lam_viec <= week_dates[-1]
+    ).order_by(WeekSchedule.ngay_lam_viec, WeekSchedule.ca, WeekSchedule.vi_tri).all()
 
     timetable = {}
-    week_tasks = []
+    week_tasks = set()
 
-    for task in tasks_in_week:
-        task_date = task.ngay_gio.date() if hasattr(task.ngay_gio, 'date') else task.ngay_gio
-        ca = task.ca_requirement or 'Sáng'
-        key = (task_date, ca)
-
+    for ws in week_schedule_entries:
+        key = (ws.ngay_lam_viec, ws.ca)
+        task = ws.task
+        if task.completed:
+            continue
         if key not in timetable:
             timetable[key] = []
-        
-        timetable[key].append(task)
-        week_tasks.append({
-            "task": task, 
-            "date": task_date, 
-            "ca": ca
+        timetable[key].append({
+            "task": task,
+            "employees": [],
+            "week_schedule_id": ws.id,
+            "vi_tri": ws.vi_tri,
         })
+        week_tasks.add(task.id)
+
+    for sch, emp, task in schedule_entries:
+        key = (sch.ngay_lam_viec, sch.ca)
+        if key not in timetable:
+            timetable[key] = []
+        found = False
+        for entry in timetable[key]:
+            if entry["task"].id == task.id:
+                entry["employees"].append(emp)
+                found = True
+                break
+        if not found:
+            timetable[key].append({
+                "task": task,
+                "employees": [emp],
+                "week_schedule_id": None,
+                "vi_tri": 0,
+            })
+        week_tasks.add(task.id)
+
+    week_tasks_dict = {}
+    for sch, emp, task in schedule_entries:
+        key = (task.id, sch.ngay_lam_viec, sch.ca)
+        if key not in week_tasks_dict:
+            week_tasks_dict[key] = {
+                "task": task,
+                "date": sch.ngay_lam_viec,
+                "ca": sch.ca,
+                "employees": [],
+            }
+        week_tasks_dict[key]["employees"].append(emp)
+    week_tasks_list = list(week_tasks_dict.values())
 
     prev_week = week_start - timedelta(days=7)
     next_week = week_start + timedelta(days=7)
@@ -548,7 +613,7 @@ def lich_trinh():
         week_dates=week_dates,
         thu_list=THU_TRONG_TUAN,
         timetable=timetable,
-        week_tasks=week_tasks,
+        week_tasks=week_tasks_list,
         prev_week=prev_week.strftime("%Y-%m-%d"),
         next_week=next_week.strftime("%Y-%m-%d"),
         today_str=date.today().strftime("%Y-%m-%d"),
@@ -572,7 +637,6 @@ def employees_page():
                 Employee.email.ilike(like),
                 Employee.bo_phan.ilike(like),
                 Employee.vi_tri.ilike(like),
-                Employee.trinh_do.ilike(like),
             )
         )
     employees = query.order_by(Employee.id.desc()).all()
@@ -588,7 +652,6 @@ def employee_add():
         "email": normalize_text(request.form.get("email")),
         "bo_phan": normalize_text(request.form.get("bo_phan")),
         "vi_tri": normalize_text(request.form.get("vi_tri")),
-        "trinh_do": normalize_text(request.form.get("trinh_do")) or "Cơ bản",
     }
     errors = validate_employee_payload(payload)
     if errors:
@@ -597,14 +660,13 @@ def employee_add():
     if Employee.query.filter_by(ma_nv=payload["ma_nv"]).first():
         flash(f"Mã nhân viên '{payload['ma_nv']}' đã tồn tại.", "danger")
         return redirect(url_for("employees_page"))
-    
+
     emp = Employee(
         ma_nv=payload["ma_nv"],
         ho_ten=payload["ho_ten"],
         email=payload["email"],
         bo_phan=payload["bo_phan"],
         vi_tri=payload["vi_tri"],
-        trinh_do=payload["trinh_do"],
         created_by_id=current_user.id,
         updated_by_id=current_user.id
     )
@@ -624,7 +686,6 @@ def employee_edit(emp_id):
         "email": normalize_text(request.form.get("email")),
         "bo_phan": normalize_text(request.form.get("bo_phan")),
         "vi_tri": normalize_text(request.form.get("vi_tri")),
-        "trinh_do": normalize_text(request.form.get("trinh_do")) or "Cơ bản",
     }
     errors = validate_employee_payload(payload)
     if errors:
@@ -634,13 +695,12 @@ def employee_edit(emp_id):
     if trung:
         flash(f"Mã nhân viên '{payload['ma_nv']}' đã được sử dụng.", "danger")
         return redirect(url_for("employees_page"))
-    
+
     emp.ma_nv = payload["ma_nv"]
     emp.ho_ten = payload["ho_ten"]
     emp.email = payload["email"]
     emp.bo_phan = payload["bo_phan"]
     emp.vi_tri = payload["vi_tri"]
-    emp.trinh_do = payload["trinh_do"]
     emp.updated_by_id = current_user.id
 
     db.session.commit()
@@ -685,23 +745,11 @@ def tasks_page():
                 .all()
             )
 
-    suggested_task = None
-    suggested_employees = []
-    suggested_ids = []
-    if task_id and auto:
-        suggested_task = Task.query.get(task_id)
-        if suggested_task:
-            suggested_ids = get_ai_suggested_employee_ids(suggested_task, ca=suggested_task.ca_requirement or "Sáng")
-            if suggested_ids:
-                suggested_employees = Employee.query.filter(Employee.id.in_(suggested_ids)).all()
-                suggested_employees.sort(key=lambda emp: suggested_ids.index(emp.id))
-
     return render_template(
         "tasks.html", tasks=tasks, q=q, do_uu_tien_list=DO_UU_TIEN_LIST,
         vi_tri_map=VI_TRI_MAP, trinh_do_list=TRINH_DO_LIST,
         do_uu_tien_colors=DO_UU_TIEN_COLORS, do_uu_tien_bg=DO_UU_TIEN_BG,
         detail_task=detail_task, detail_assignments=detail_assignments,
-        suggested_task=suggested_task, suggested_employees=suggested_employees, suggested_ids=[str(i) for i in suggested_ids]
     )
 
 
@@ -713,11 +761,9 @@ def task_add():
         "ten_cv": normalize_text(request.form.get("ten_cv")),
         "ghi_chu": normalize_text(request.form.get("ghi_chu")),
         "do_uu_tien": normalize_text(request.form.get("do_uu_tien")) or "Trung bình",
-        "ngay_gio": normalize_text(request.form.get("ngay_gio")),
         "bo_phan": normalize_text(request.form.get("bo_phan")),
         "so_luong_nv": request.form.get("so_luong_nv", "1"),
         "thoi_luong": request.form.get("thoi_luong", "1"),
-        "ca_requirement": normalize_text(request.form.get("ca_requirement")) or "Sáng",
     }
     errors = validate_task_payload(payload)
     if errors:
@@ -726,21 +772,17 @@ def task_add():
     if Task.query.filter_by(ma_cv=payload["ma_cv"]).first():
         flash(f"Mã công việc '{payload['ma_cv']}' đã tồn tại.", "danger")
         return redirect(url_for("tasks_page"))
-    ngay_gio = parse_date_value(payload["ngay_gio"])
-    if ngay_gio is None:
-        flash("Ngày công việc không đúng định dạng.", "danger")
-        return redirect(url_for("tasks_page"))
     
     task = Task(
         ma_cv=payload["ma_cv"],
         ten_cv=payload["ten_cv"],
         ghi_chu=payload["ghi_chu"],
         do_uu_tien=payload["do_uu_tien"],
-        ngay_gio=datetime.combine(ngay_gio, datetime.min.time()),
+        ngay_gio=None,
         bo_phan=payload["bo_phan"],
         so_luong_nv=int(payload["so_luong_nv"]),
         thoi_luong=float(payload["thoi_luong"]),
-        ca_requirement=payload["ca_requirement"],
+        ca_requirement=None,
         created_by_id=current_user.id,
         updated_by_id=current_user.id
     )
@@ -760,11 +802,9 @@ def task_edit(task_id):
         "ten_cv": normalize_text(request.form.get("ten_cv")),
         "ghi_chu": normalize_text(request.form.get("ghi_chu")),
         "do_uu_tien": normalize_text(request.form.get("do_uu_tien")) or "Trung bình",
-        "ngay_gio": normalize_text(request.form.get("ngay_gio")),
         "bo_phan": normalize_text(request.form.get("bo_phan")),
         "so_luong_nv": request.form.get("so_luong_nv", "1"),
         "thoi_luong": request.form.get("thoi_luong", "1"),
-        "ca_requirement": normalize_text(request.form.get("ca_requirement")) or "Sáng",
     }
     errors = validate_task_payload(payload)
     if errors:
@@ -778,38 +818,11 @@ def task_edit(task_id):
     task.ten_cv = payload["ten_cv"]
     task.ghi_chu = payload["ghi_chu"]
     task.do_uu_tien = payload["do_uu_tien"]
-    ngay_gio = parse_date_value(payload["ngay_gio"])
-    if ngay_gio is None:
-        flash("Ngày công việc không đúng định dạng.", "danger")
-        return redirect(url_for("tasks_page"))
-    task.ngay_gio = datetime.combine(ngay_gio, datetime.min.time())
     task.bo_phan = payload["bo_phan"]
     task.so_luong_nv = int(payload["so_luong_nv"])
     task.thoi_luong = float(payload["thoi_luong"])
-    old_ca = task.ca_requirement
-    new_ca = payload["ca_requirement"]
-    task.ca_requirement = new_ca
     task.updated_at = datetime.utcnow()
     task.updated_by_id = current_user.id
-
-    if old_ca != new_ca:
-        conflicts = []
-        for sch in task.schedules:
-            if sch.ca != new_ca:
-                existing = Schedule.query.filter(
-                    Schedule.employee_id == sch.employee_id,
-                    Schedule.ngay_lam_viec == sch.ngay_lam_viec,
-                    Schedule.ca == new_ca,
-                    Schedule.id != sch.id,
-                ).first()
-                if existing:
-                    employee = Employee.query.get(sch.employee_id)
-                    conflicts.append(f"{employee.ho_ten} ({employee.ma_nv})")
-                else:
-                    sch.ca = new_ca
-                    sch.updated_by_id = current_user.id
-        if conflicts:
-            flash("Không thể cập nhật ca cho một số nhân viên do trùng ca: " + ", ".join(conflicts), "warning")
 
     db.session.commit()
     touch_last_update()
@@ -821,6 +834,8 @@ def task_edit(task_id):
 @login_required
 def task_delete(task_id):
     task = Task.query.get_or_404(task_id)
+    Schedule.query.filter_by(task_id=task.id).delete()
+    WeekSchedule.query.filter_by(task_id=task.id).delete()
     db.session.delete(task)
     db.session.commit()
     touch_last_update()
@@ -832,6 +847,8 @@ def task_delete(task_id):
 @login_required
 def task_complete(task_id):
     task = Task.query.get_or_404(task_id)
+    Schedule.query.filter(Schedule.task_id == task.id).update({"week_schedule_id": None})
+    WeekSchedule.query.filter_by(task_id=task.id).delete()
     task.completed = True
     task.completed_at = datetime.utcnow()
     task.updated_at = datetime.utcnow()
@@ -876,6 +893,12 @@ def task_history():
 @login_required
 def task_assign():
     tasks = Task.query.filter_by(completed=False).order_by(Task.id.desc()).all()
+    week_start = get_week_start(date.today())
+    week_dates = [week_start + timedelta(days=i) for i in range(7)]
+    week_schedule = WeekSchedule.query.filter(
+        WeekSchedule.ngay_lam_viec >= week_start,
+        WeekSchedule.ngay_lam_viec <= week_dates[-1]
+    ).order_by(WeekSchedule.ngay_lam_viec, WeekSchedule.ca, WeekSchedule.vi_tri).all()
     recent = (
         db.session.query(Schedule, Employee, Task)
         .join(Employee, Schedule.employee_id == Employee.id)
@@ -888,6 +911,10 @@ def task_assign():
     return render_template(
         "task_assign.html",
         tasks=tasks,
+        week_schedule=week_schedule,
+        week_start=week_start,
+        week_dates=week_dates,
+        thu_list=THU_TRONG_TUAN,
         recent=recent,
         assign_mode=assign_mode,
         today_str=date.today().strftime("%Y-%m-%d"),
@@ -920,29 +947,31 @@ def delete_assignment_route(schedule_id):
 def assign_get_employees():
     data = request.get_json()
     task_id = data.get("task_id")
+    ngay_str = data.get("ngay_lam_viec")
+    ca = data.get("ca", "Sáng")
     
     task = Task.query.get(task_id)
     if not task:
         return jsonify({"error": "Công việc không tồn tại"}), 404
 
+    ngay = parse_date_value(ngay_str) if ngay_str else None
+
     query = Employee.query
-    if task.bo_phan:
-        query = query.filter(Employee.bo_phan == task.bo_phan)
+    departments = get_department_filter(task)
+    if departments:
+        query = query.filter(Employee.bo_phan.in_(departments))
 
     employees = query.all()
-
-    task_ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
-    task_date = task.ngay_gio.date() if task.ngay_gio else None
 
     result = []
     for emp in employees:
         available = True
         msg = ""
-        if task_date:
-            existing = check_trung_ca(emp.id, task_date, task_ca)
+        if ngay:
+            existing = check_trung_ca(emp.id, ngay, ca)
             if existing:
                 available = False
-                msg = f"Đã có lịch '{existing.task.ten_cv}' ca {task_ca}"
+                msg = f"Đã có lịch '{existing.task.ten_cv}' ca {ca}"
         result.append({
             "id": emp.id,
             "ma_nv": emp.ma_nv,
@@ -950,7 +979,6 @@ def assign_get_employees():
             "email": emp.email,
             "bo_phan": emp.bo_phan,
             "vi_tri": emp.vi_tri,
-            "trinh_do": emp.trinh_do,
             "available": available,
             "msg": msg,
         })
@@ -962,7 +990,7 @@ def assign_get_employees():
         "max_nv": task.so_luong_nv,
         "assigned_count": assigned_count,
         "remaining_slots": max(0, task.so_luong_nv - assigned_count),
-        "ca": task_ca
+        "ca": ca
     })
 
 
@@ -971,33 +999,37 @@ def assign_get_employees():
 def assign_ai_suggest():
     data = request.get_json()
     task_id = data.get("task_id")
+    ngay_str = data.get("ngay_lam_viec")
+    ca = data.get("ca", "Sáng")
+    
     task = Task.query.get(task_id)
     if not task:
-        return jsonify({"error": "Task not found"}), 404
+        return jsonify({"error": "Công việc không tồn tại"}), 404
 
-    task_ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
+    ngay = parse_date_value(ngay_str) if ngay_str else None
 
     query = Employee.query
-    if task.bo_phan:
-        query = query.filter(Employee.bo_phan == task.bo_phan)
+    departments = get_department_filter(task)
+    if departments:
+        query = query.filter(Employee.bo_phan.in_(departments))
     employees = query.all()
 
-    task_date = task.ngay_gio.date() if task.ngay_gio else None
     scored = []
     for emp in employees:
         score = 0
-        if emp.trinh_do == "Chuyên gia":
+        _, trinh_do = parse_vi_tri_with_level(emp.vi_tri or "")
+        if trinh_do == "Chuyên gia":
             score += 40
-        elif emp.trinh_do == "Thành thạo":
+        elif trinh_do == "Thành thạo":
             score += 30
-        elif emp.trinh_do == "Khá":
+        elif trinh_do == "Khá":
             score += 20
-        elif emp.trinh_do == "Cơ bản":
+        elif trinh_do == "Cơ bản":
             score += 10
 
         available = True
-        if task_date:
-            existing = check_trung_ca(emp.id, task_date, task_ca)
+        if ngay:
+            existing = check_trung_ca(emp.id, ngay, ca)
             if existing:
                 available = False
                 score -= 100
@@ -1011,7 +1043,6 @@ def assign_ai_suggest():
             "ho_ten": emp.ho_ten,
             "bo_phan": emp.bo_phan,
             "vi_tri": emp.vi_tri,
-            "trinh_do": emp.trinh_do,
             "score": max(score, 0) if available else 0,
             "available": available,
             "recommended": available and score > 20,
@@ -1027,14 +1058,27 @@ def assign_save():
     data = request.get_json()
     task_id = data.get("task_id")
     employee_ids = data.get("employee_ids", [])
+    week_schedule_id = data.get("week_schedule_id")
     
     task = Task.query.get(task_id)
     if not task:
         return jsonify({"error": "Công việc không tồn tại."}), 404
-    if not task.ngay_gio:
-        return jsonify({"error": "Công việc chưa có ngày thực hiện."}), 400
 
-    ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
+    ws_entry = None
+    if week_schedule_id:
+        ws_entry = WeekSchedule.query.get(week_schedule_id)
+    
+    if not ws_entry:
+        ngay_str = data.get("ngay_lam_viec")
+        ca = data.get("ca", "Sáng")
+        if not ngay_str:
+            return jsonify({"error": "Thiếu ngày làm việc."}), 400
+        ngay = parse_date_value(ngay_str)
+        if not ngay:
+            return jsonify({"error": "Ngày làm việc không hợp lệ."}), 400
+    else:
+        ngay = ws_entry.ngay_lam_viec
+        ca = ws_entry.ca
 
     current_assigned_count = Schedule.query.filter_by(task_id=task.id).count()
     total_after_assign = current_assigned_count + len(employee_ids)
@@ -1044,15 +1088,14 @@ def assign_save():
             "error": f"Vượt quá số lượng quy định! Công việc này cần tối đa {task.so_luong_nv} nhân viên (hiện tại đã phân công {current_assigned_count})."
         }), 400
 
-    ngay = task.ngay_gio.date()
     assigned = []
     errors = []
 
     for eid in employee_ids:
-        already_in_task = Schedule.query.filter_by(employee_id=eid, task_id=task_id).first()
+        already_in_task = Schedule.query.filter_by(employee_id=eid, task_id=task_id, ngay_lam_viec=ngay, ca=ca).first()
         if already_in_task:
             emp = Employee.query.get(eid)
-            errors.append(f"Nhân viên '{emp.ho_ten}' đã thuộc công việc này.")
+            errors.append(f"Nhân viên '{emp.ho_ten}' đã được phân công ca này.")
             continue
 
         trung = check_trung_ca(eid, ngay, ca)
@@ -1066,6 +1109,7 @@ def assign_save():
             task_id=task_id, 
             ngay_lam_viec=ngay, 
             ca=ca,
+            week_schedule_id=week_schedule_id,
             created_by_id=current_user.id,
             updated_by_id=current_user.id
         )
@@ -1080,22 +1124,31 @@ def assign_save():
 @app.route("/tasks/assign/auto-all", methods=["POST"])
 @login_required
 def auto_assign_all_tasks():
-    tasks = Task.query.filter_by(completed=False).all()
+    week_start = get_week_start(date.today())
+    ws_entries = WeekSchedule.query.filter(
+        WeekSchedule.ngay_lam_viec >= week_start,
+        WeekSchedule.ngay_lam_viec < week_start + timedelta(days=7)
+    ).all()
+    
     total_assigned = 0
+    total_errors = []
 
-    for task in tasks:
-        if not task.ngay_gio:
+    for ws_entry in ws_entries:
+        if ws_entry.task.completed:
             continue
-        task_ca = task.ca_requirement if task.ca_requirement in ["Sáng", "Chiều"] else "Sáng"
-        assigned, _ = assign_task_ai(task, ca=task_ca, user_id=current_user.id)
+        assigned, errors = assign_task_ai(ws_entry, user_id=current_user.id)
         total_assigned += len(assigned)
+        total_errors.extend(errors)
 
     db.session.commit()
     touch_last_update()
     if total_assigned:
-        flash(f"AI đã tự động phân công {total_assigned} ca cho các công việc hợp lệ.", "success")
+        flash(f"AI đã tự động phân công {total_assigned} ca.", "success")
     else:
-        flash("AI không thể phân công thêm ca nào. Vui lòng kiểm tra điều kiện công việc và nhân viên.", "warning")
+        msg = "AI không thể phân công thêm ca nào."
+        if total_errors:
+            msg += " Lỗi: " + "; ".join(total_errors[:5])
+        flash(msg, "warning")
     return redirect(url_for("tasks_page"))
 
 
@@ -1115,9 +1168,221 @@ def download_template(template_type):
         filename = "employees_sample.xlsx"
     elif template_type == "tasks":
         filename = "tasks_sample.xlsx"
+    elif template_type == "tkb_tuan":
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "TKB_tuan"
+        thu_headers = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"]
+        ws.cell(row=1, column=1, value="Ca")
+        for i, thu in enumerate(thu_headers):
+            ws.cell(row=1, column=i + 2, value=thu)
+        ws.cell(row=2, column=1, value="Sáng")
+        ws.cell(row=7, column=1, value="Chiều")
+        for col in range(1, 9):
+            ws.cell(row=2, column=col).font = openpyxl.styles.Font(bold=True)
+            ws.cell(row=7, column=col).font = openpyxl.styles.Font(bold=True)
+        for row in range(3, 7):
+            for col in range(2, 9):
+                ws.cell(row=row, column=col).border = openpyxl.styles.Border(
+                    left=openpyxl.styles.Side(style='thin'),
+                    right=openpyxl.styles.Side(style='thin'),
+                    top=openpyxl.styles.Side(style='thin'),
+                    bottom=openpyxl.styles.Side(style='thin'),
+                )
+        for row in range(8, 12):
+            for col in range(2, 9):
+                ws.cell(row=row, column=col).border = openpyxl.styles.Border(
+                    left=openpyxl.styles.Side(style='thin'),
+                    right=openpyxl.styles.Side(style='thin'),
+                    top=openpyxl.styles.Side(style='thin'),
+                    bottom=openpyxl.styles.Side(style='thin'),
+                )
+        ws.column_dimensions['A'].width = 10
+        for col in range(2, 9):
+            ws.column_dimensions[chr(64 + col)].width = 20
+        
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return Response(
+            output.read(),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment;filename=TKB_tuan_mau.xlsx"}
+        )
     else:
         return "Template không tồn tại", 404
     return send_from_directory(BASE_DIR, filename, as_attachment=True)
+
+
+@app.route("/upload-schedule", methods=["GET", "POST"])
+@login_required
+def upload_schedule():
+    imported_count = 0
+    skipped_count = 0
+    errors_list = []
+    today = date.today()
+    week_start = get_week_start(today)
+
+    if request.method == "POST":
+        uploaded_file = request.files.get("file")
+        replace = request.form.get("replace") == "1"
+        if not uploaded_file or not uploaded_file.filename:
+            flash("Vui lòng chọn file Excel để tải lên.", "danger")
+            return render_template("upload_schedule.html", imported_count=0, skipped_count=0, errors_list=[], week_start=week_start)
+
+        content = uploaded_file.read()
+        try:
+            workbook = load_workbook(io.BytesIO(content), data_only=True)
+        except Exception as e:
+            flash(f"Không thể đọc file: {str(e)}", "danger")
+            return render_template("upload_schedule.html", imported_count=0, skipped_count=0, errors_list=[], week_start=week_start)
+
+        sheet = workbook.active
+        raw_rows = list(sheet.iter_rows(values_only=True))
+        if not raw_rows or len(raw_rows) < 2:
+            flash("File không có dữ liệu hợp lệ.", "danger")
+            return render_template("upload_schedule.html", imported_count=0, skipped_count=0, errors_list=[], week_start=week_start)
+
+        thu_map = {
+            "thứ 2": 0, "thứ hai": 0, "t2": 0,
+            "thứ 3": 1, "thứ ba": 1, "t3": 1,
+            "thứ 4": 2, "thứ tư": 2, "t4": 2,
+            "thứ 5": 3, "thứ năm": 3, "t5": 3,
+            "thứ 6": 4, "thứ sáu": 4, "t6": 4,
+            "thứ 7": 5, "thứ bảy": 5, "t7": 5,
+            "chủ nhật": 6, "cn": 6,
+        }
+
+        headers = []
+        for cell in raw_rows[0]:
+            h = normalize_text(cell).lower() if cell else ""
+            headers.append(h)
+
+        col_day_map = {}
+        for idx, h in enumerate(headers):
+            if idx == 0:
+                continue
+            for key, day_idx in thu_map.items():
+                if key in h:
+                    col_day_map[idx] = day_idx
+                    break
+
+        if replace:
+            WeekSchedule.query.filter(
+                WeekSchedule.week_start == week_start
+            ).delete()
+            db.session.flush()
+
+        vi_tri_sang = 0
+        vi_tri_chieu = 0
+        current_ca = None
+
+        for row_idx, row in enumerate(raw_rows[1:], start=2):
+            ca_cell = normalize_text(row[0]).lower() if row and row[0] else ""
+            if "sáng" in ca_cell or "sang" in ca_cell:
+                current_ca = "Sáng"
+                vi_tri_sang = 0
+                continue
+            elif "chiều" in ca_cell or "chieu" in ca_cell:
+                current_ca = "Chiều"
+                vi_tri_chieu = 0
+                continue
+            elif ca_cell in ("", None) and current_ca is None:
+                continue
+
+            if current_ca is None:
+                continue
+
+            if current_ca == "Sáng":
+                vi_tri_sang += 1
+                vi_tri = vi_tri_sang
+            else:
+                vi_tri_chieu += 1
+                vi_tri = vi_tri_chieu
+
+            for col_idx, cell_value in enumerate(row):
+                if col_idx == 0:
+                    continue
+                if col_idx not in col_day_map:
+                    continue
+                ma_cv = normalize_text(cell_value) if cell_value else ""
+                if not ma_cv:
+                    continue
+
+                day_offset = col_day_map[col_idx]
+                ngay_lam_viec = week_start + timedelta(days=day_offset)
+
+                task = Task.query.filter_by(ma_cv=ma_cv).first()
+                if not task:
+                    skipped_count += 1
+                    errors_list.append(f"Dòng {row_idx}: Mã CV '{ma_cv}' không tồn tại.")
+                    continue
+
+                existing = WeekSchedule.query.filter_by(
+                    task_id=task.id,
+                    ngay_lam_viec=ngay_lam_viec,
+                    ca=current_ca
+                ).first()
+                if existing:
+                    existing.vi_tri = vi_tri
+                    existing.updated_by_id = current_user.id
+                else:
+                    ws = WeekSchedule(
+                        task_id=task.id,
+                        ngay_lam_viec=ngay_lam_viec,
+                        ca=current_ca,
+                        vi_tri=vi_tri,
+                        week_start=week_start,
+                        created_by_id=current_user.id,
+                        updated_by_id=current_user.id
+                    )
+                    db.session.add(ws)
+                imported_count += 1
+
+        db.session.commit()
+        touch_last_update()
+
+        if imported_count:
+            flash(f"Đã nhập {imported_count} lịch công việc cho tuần {week_start.strftime('%d/%m/%Y')}.", "success")
+        if skipped_count:
+            flash(f"Bỏ qua {skipped_count} ô lỗi.", "warning")
+
+    return render_template(
+        "upload_schedule.html",
+        imported_count=imported_count,
+        skipped_count=skipped_count,
+        errors_list=errors_list,
+        week_start=week_start,
+    )
+
+
+@app.route("/api/check-ai-readiness")
+@login_required
+def api_check_ai_readiness():
+    emp_count = Employee.query.count()
+    task_count = Task.query.filter_by(completed=False).count()
+    week_start = get_week_start(date.today())
+    ws_count = WeekSchedule.query.filter(
+        WeekSchedule.ngay_lam_viec >= week_start,
+        WeekSchedule.ngay_lam_viec < week_start + timedelta(days=7)
+    ).count()
+
+    missing = []
+    if emp_count == 0:
+        missing.append("Nhân viên")
+    if task_count == 0:
+        missing.append("Công việc")
+    if ws_count == 0:
+        missing.append("Thời khóa biểu tuần (TKB_tuan)")
+
+    ready = len(missing) == 0
+    return jsonify({
+        "ready": ready,
+        "missing": missing,
+        "employees": emp_count,
+        "tasks": task_count,
+        "week_schedule": ws_count,
+    })
 
 
 @app.route("/schedule/delete/<int:sch_id>", methods=["POST"])
@@ -1258,13 +1523,13 @@ def import_data_page():
 
         if import_type == "employees":
             for row in rows:
+                vi_tri_raw = normalize_text(row.get("vi_tri") or row.get("Vị trí") or row.get("position") or "")
                 payload = {
                     "ma_nv": normalize_text(row.get("ma_nv") or row.get("Mã nhân viên") or row.get("maNV") or row.get("id")),
                     "ho_ten": normalize_text(row.get("ho_ten") or row.get("Họ tên") or row.get("Họ và tên") or row.get("hoTen") or row.get("name")),
                     "email": normalize_text(row.get("email") or row.get("Email") or row.get("mail")),
                     "bo_phan": normalize_text(row.get("bo_phan") or row.get("Bộ phận") or row.get("department")),
-                    "vi_tri": normalize_text(row.get("vi_tri") or row.get("Vị trí") or row.get("position")),
-                    "trinh_do": normalize_text(row.get("trinh_do") or row.get("Trình độ") or row.get("level")) or "Cơ bản",
+                    "vi_tri": vi_tri_raw,
                 }
                 
                 errors = validate_employee_payload(payload)
@@ -1280,7 +1545,6 @@ def import_data_page():
                     existing_emp.email = payload["email"]
                     existing_emp.bo_phan = payload["bo_phan"]
                     existing_emp.vi_tri = payload["vi_tri"]
-                    existing_emp.trinh_do = payload["trinh_do"]
                     existing_emp.updated_by_id = current_user.id
                     updated_count += 1
                 else:
@@ -1305,7 +1569,6 @@ def import_data_page():
                     "ten_cv": normalize_text(row.get("ten_cv") or row.get("Tên công việc") or row.get("tenCV") or row.get("title")),
                     "ghi_chu": normalize_text(row.get("ghi_chu") or row.get("Ghi chú") or row.get("note") or row.get("description")),
                     "do_uu_tien": normalize_text(row.get("do_uu_tien") or row.get("Độ ưu tiên") or row.get("priority")) or "Trung bình",
-                    "ngay_gio": normalize_text(row.get("ngay_gio") or row.get("Ngày") or row.get("date") or row.get("ngay")),
                     "bo_phan": normalize_text(row.get("bo_phan") or row.get("Bộ phận") or row.get("department")),
                     "so_luong_nv": normalize_text(row.get("so_luong_nv") or row.get("Số lượng NV") or row.get("quantity") or "1"),
                     "thoi_luong": normalize_text(row.get("thoi_luong") or row.get("Thời lượng") or row.get("duration") or "1"),
@@ -1317,23 +1580,18 @@ def import_data_page():
                     summary.append({"row": row, "errors": errors})
                     continue
 
-                ngay_gio = parse_date_value(payload["ngay_gio"])
-                if ngay_gio is None:
-                    skipped_count += 1
-                    summary.append({"row": row, "errors": ["Ngày công việc không đúng định dạng."]})
-                    continue
-
                 existing_task = Task.query.filter_by(ma_cv=payload["ma_cv"]).first()
 
                 if existing_task:
                     existing_task.ten_cv = payload["ten_cv"]
                     existing_task.ghi_chu = payload["ghi_chu"]
                     existing_task.do_uu_tien = payload["do_uu_tien"]
-                    existing_task.ngay_gio = datetime.combine(ngay_gio, datetime.min.time())
                     existing_task.bo_phan = payload["bo_phan"]
                     existing_task.so_luong_nv = int(payload["so_luong_nv"])
                     existing_task.thoi_luong = float(payload["thoi_luong"])
                     existing_task.updated_by_id = current_user.id
+                    existing_task.ngay_gio = None
+                    existing_task.ca_requirement = None
                     updated_count += 1
                 else:
                     task = Task(
@@ -1341,7 +1599,8 @@ def import_data_page():
                         ten_cv=payload["ten_cv"],
                         ghi_chu=payload["ghi_chu"],
                         do_uu_tien=payload["do_uu_tien"],
-                        ngay_gio=datetime.combine(ngay_gio, datetime.min.time()),
+                        ngay_gio=None,
+                        ca_requirement=None,
                         bo_phan=payload["bo_phan"],
                         so_luong_nv=int(payload["so_luong_nv"]),
                         thoi_luong=float(payload["thoi_luong"]),
@@ -1402,9 +1661,11 @@ def ensure_task_schema():
         if "created_by_id" not in schedule_columns:
             conn.execute(text("ALTER TABLE schedule ADD COLUMN created_by_id INTEGER REFERENCES users(id)"))
         if "updated_by_id" not in schedule_columns:
-            conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_at DATETIME"))
+            conn.execute(text("ALTER TABLE schedule ADD COLUMN updated_by_id INTEGER REFERENCES users(id)"))
+        if "week_schedule_id" not in schedule_columns:
+            conn.execute(text("ALTER TABLE schedule ADD COLUMN week_schedule_id INTEGER REFERENCES week_schedule(id)"))
 
-        conn.execute(text("UPDATE task SET ca_requirement='Sáng' WHERE ca_requirement NOT IN ('Sáng','Chiều') OR ca_requirement IS NULL"))
+        conn.execute(text("UPDATE task SET ca_requirement=NULL WHERE ca_requirement IS NOT NULL"))
 
 
 with app.app_context():

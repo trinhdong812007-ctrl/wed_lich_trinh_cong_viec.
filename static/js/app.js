@@ -65,3 +65,188 @@ if (hamburgerBtn) {
     document.getElementById("sidebar").classList.toggle("open");
   });
 }
+
+function initMultiSelect(containerEl, options, { selected = [], placeholder = "Tim kiem...", name = "", onChange = null, positionMode = false, levelList = [] } = {}) {
+  if (!containerEl) return;
+  const hiddenInput = containerEl.querySelector('input[type="hidden"]');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'multi-select-wrapper';
+
+  const inputDiv = document.createElement('div');
+  inputDiv.className = 'multi-select-input';
+
+  const chipsSpan = document.createElement('span');
+  chipsSpan.className = 'multi-select-chips';
+  chipsSpan.style.display = 'contents';
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.className = 'multi-select-search';
+  searchInput.placeholder = placeholder;
+  searchInput.autocomplete = 'off';
+
+  inputDiv.appendChild(chipsSpan);
+  inputDiv.appendChild(searchInput);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'multi-select-dropdown';
+
+  wrapper.appendChild(inputDiv);
+  wrapper.appendChild(dropdown);
+
+  if (hiddenInput) {
+    hiddenInput.parentNode.insertBefore(wrapper, hiddenInput);
+    wrapper.appendChild(hiddenInput);
+  } else {
+    const newHidden = document.createElement('input');
+    newHidden.type = 'hidden';
+    if (name) newHidden.name = name;
+    wrapper.appendChild(newHidden);
+    hiddenInput = newHidden;
+  }
+
+  const selectedSet = new Set(selected.filter(Boolean));
+  let pendingPosition = null;
+
+  function renderChips() {
+    const values = Array.from(selectedSet);
+    chipsSpan.innerHTML = values.map(v =>
+      `<span class="multi-select-chip" data-value="${v}">${v}<span class="remove" data-value="${v}">&times;</span></span>`
+    ).join('');
+    if (hiddenInput) hiddenInput.value = values.join(', ');
+    chipsSpan.querySelectorAll('.remove').forEach(el => {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const val = this.dataset.value;
+        selectedSet.delete(val);
+        renderChips();
+        renderDropdown(searchInput.value);
+      });
+    });
+    if (onChange) onChange(Array.from(selectedSet));
+  }
+
+  function renderDropdown(filter) {
+    if (positionMode && pendingPosition) {
+      renderLevelOptions(pendingPosition);
+      return;
+    }
+    const q = (filter || '').toLowerCase().trim();
+    let filtered = options;
+    if (q) {
+      filtered = options.filter(o => o.toLowerCase().includes(q));
+    }
+    if (filtered.length === 0) {
+      dropdown.innerHTML = '<div class="multi-select-no-results">Khong tim thay</div>';
+      return;
+    }
+    dropdown.innerHTML = filtered.map(o => {
+      const sel = selectedSet.has(o) ? 'selected' : '';
+      return `<div class="multi-select-option ${sel}" data-value="${o}">
+        <span class="toggle-icon">${selectedSet.has(o) ? '&#10003;' : ''}</span>
+        <span>${o}</span>
+      </div>`;
+    }).join('');
+
+    dropdown.querySelectorAll('.multi-select-option').forEach(el => {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const val = this.dataset.value;
+        if (positionMode) {
+          pendingPosition = val;
+          dropdown.classList.add('show');
+          renderLevelOptions(val);
+          return;
+        }
+        if (selectedSet.has(val)) {
+          selectedSet.delete(val);
+        } else {
+          selectedSet.add(val);
+        }
+        renderChips();
+        renderDropdown(searchInput.value);
+        searchInput.focus();
+      });
+    });
+  }
+
+  function renderLevelOptions(position) {
+    dropdown.classList.add('show');
+    const prevPlaceholder = searchInput.placeholder;
+    searchInput.placeholder = 'Chon trinh do cho ' + position + '...';
+    dropdown.innerHTML = '<div class="multi-select-level-back" style="padding:6px 10px;cursor:pointer;color:#94a3b8;font-size:13px;border-bottom:1px solid #30363d;">&larr; Quay lai</div>' +
+      levelList.map(level =>
+        '<div class="multi-select-option" data-position="' + position + '" data-level="' + level + '">' +
+          '<span>' + level + '</span>' +
+        '</div>'
+      ).join('');
+
+    dropdown.querySelector('.multi-select-level-back').addEventListener('click', function(e) {
+      e.stopPropagation();
+      pendingPosition = null;
+      searchInput.placeholder = prevPlaceholder;
+      renderDropdown(searchInput.value);
+    });
+
+    dropdown.querySelectorAll('.multi-select-option').forEach(el => {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const pos = this.dataset.position;
+        const level = this.dataset.level;
+        const combined = pos + '(' + level + ')';
+        selectedSet.add(combined);
+        pendingPosition = null;
+        searchInput.placeholder = prevPlaceholder;
+        renderChips();
+        renderDropdown('');
+        searchInput.focus();
+      });
+    });
+  }
+
+  searchInput.addEventListener('focus', () => {
+    dropdown.classList.add('show');
+    renderDropdown(searchInput.value);
+  });
+
+  searchInput.addEventListener('input', () => {
+    dropdown.classList.add('show');
+    renderDropdown(searchInput.value);
+  });
+
+  document.addEventListener('click', function closeDropdown(e) {
+    if (!wrapper.contains(e.target)) {
+      dropdown.classList.remove('show');
+      if (pendingPosition) {
+        pendingPosition = null;
+        renderDropdown('');
+      }
+    }
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      dropdown.classList.remove('show');
+      if (pendingPosition) {
+        pendingPosition = null;
+        renderDropdown('');
+      }
+    }
+  });
+
+  renderChips();
+
+  return {
+    getValue: () => Array.from(selectedSet),
+    setOptions: function(newOptions) {
+      options = newOptions;
+      renderDropdown(searchInput.value);
+    },
+    setSelected: function(values) {
+      selectedSet.clear();
+      values.filter(Boolean).forEach(v => selectedSet.add(v));
+      renderChips();
+      renderDropdown(searchInput.value);
+    },
+  };
+}

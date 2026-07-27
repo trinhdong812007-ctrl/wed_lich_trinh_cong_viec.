@@ -4,81 +4,97 @@
 
 {% block content %}
 <div class="container-fluid px-4 py-3">
-    <h3 class="mb-4 text-light font-weight-bold">Phân công nhân viên</h3>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="text-light font-weight-bold mb-0">Phân công nhân viên</h3>
+        <div>
+            <button id="btnAutoAssign" class="btn btn-warning font-weight-bold px-3 me-2">
+                <i class="bi bi-robot"></i> AI phân công
+            </button>
+            <span id="aiReadiness" class="badge" style="font-size:12px;"></span>
+        </div>
+    </div>
 
     <div class="row">
-        <!-- Khối Form Phân Công -->
-        <div class="col-md-5">
+        <!-- Grid lịch tuần -->
+        <div class="col-md-7">
             <div class="card bg-dark text-light border-secondary shadow mb-4" style="background-color: #161b22 !important;">
-                <div class="card-header border-secondary bg-transparent font-weight-bold text-light">
-                    Phân công nhân viên
+                <div class="card-header border-secondary bg-transparent font-weight-bold text-light d-flex justify-content-between">
+                    <span><i class="bi bi-calendar-week"></i> Thời khóa biểu tuần</span>
+                    <span class="text-muted" style="font-size:13px">{{ week_start.strftime('%d/%m/%Y') }} - {{ week_dates[-1].strftime('%d/%m/%Y') }}</span>
                 </div>
-                <div class="card-body">
-                    <!-- 1. Chọn công việc -->
-                    <div class="form-group mb-3">
-                        <label for="selectTask" class="form-label font-weight-bold" style="color: #94a3b8;">Chọn công việc</label>
-                        <select id="selectTask" class="form-control bg-dark text-light border-secondary" style="background-color: #0d1117 !important; border-color: #30363d !important;">
-                            <option value="">-- Chọn công việc --</option>
-                            {% for task in tasks %}
-                            <option value="{{ task.id }}" 
-                                    data-ten="{{ task.ten_cv }}"
-                                    data-macv="{{ task.ma_cv }}"
-                                    data-bp="{{ task.bo_phan or 'Tất cả' }}"
-                                    data-ngay="{{ task.ngay_gio.strftime('%Y-%m-%d') if task.ngay_gio else '' }}"
-                                    data-soluong="{{ task.so_luong_nv }}"
-                                    data-uutien="{{ task.do_uu_tien }}"
-                                    data-ca="{{ task.ca_requirement or 'Sáng' }}">
-                                {{ task.ten_cv }} ({{ task.ma_cv }})
-                            </option>
-                            {% endfor %}
-                        </select>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0" style="background-color: transparent; font-size:13px;">
+                            <thead>
+                                <tr style="color: #94a3b8; border-bottom: 1px solid #30363d;">
+                                    <th style="width:60px; text-align:center;">Ca</th>
+                                    {% for d in week_dates %}
+                                    <th style="text-align:center;">{{ thu_list[loop.index0] }}<br><span style="font-size:11px;color:#6b7280;">{{ d.strftime('%d/%m') }}</span></th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set ca_list = ['Sáng', 'Chiều'] %}
+                                {% for ca in ca_list %}
+                                <tr style="border-bottom: 1px solid #21262d;">
+                                    <td style="text-align:center;vertical-align:middle;font-weight:700;color:{{ 'var(--blue)' if ca=='Sáng' else 'var(--green)' }};">{{ ca }}</td>
+                                    {% for d in week_dates %}
+                                    <td style="vertical-align:top;padding:4px;">
+                                        {% set cell_entries = [] %}
+                                        {% for ws in week_schedule %}
+                                            {% if ws.ngay_lam_viec == d and ws.ca == ca %}
+                                                {% set _ = cell_entries.append(ws) %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% if cell_entries %}
+                                            {% for ws in cell_entries %}
+                                            <div class="grid-slot mb-1" data-ws-id="{{ ws.id }}" data-task-id="{{ ws.task.id }}" data-ngay="{{ ws.ngay_lam_viec.strftime('%Y-%m-%d') }}" data-ca="{{ ws.ca }}" style="cursor:pointer;padding:4px 6px;border-radius:6px;background:{{ do_uu_tien_bg.get(ws.task.do_uu_tien, 'rgba(59,130,246,0.18)') }};color:{{ do_uu_tien_colors.get(ws.task.do_uu_tien, '#60a5fa') }};font-size:11px;font-weight:600;text-align:center;word-break:break-word;">
+                                                {{ ws.task.ten_cv }}
+                                                <span style="display:block;font-size:10px;color:var(--text-muted);">{{ ws.task.ma_cv }}</span>
+                                            </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="grid-slot-empty" style="padding:4px;text-align:center;color:#4b5563;font-size:11px;">-</div>
+                                        {% endif %}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
-
-                    <!-- 2. Khối hiển thị chi tiết thông tin công việc -->
-                    <div id="taskDetailCard" class="card p-3 mb-3 border-secondary" style="display: none; background-color: #0d1117 !important; border-color: #30363d !important;">
-                        <h5 id="taskDetailTitle" class="font-weight-bold mb-2" style="color: #f0f6fc !important;"></h5>
-                        
-                        <div id="taskDetailSub" class="mb-3" style="color: #94a3b8 !important; font-size: 0.9rem;"></div>
-                        
-                        <div class="d-flex align-items-center mb-2">
-                            <span class="mr-2" style="color: #94a3b8 !important;">Độ ưu tiên:</span>
-                            <span id="taskDetailPriority" class="badge badge-pill px-2 py-1"></span>
-                        </div>
-                        <div class="d-flex align-items-center">
-                            <span class="mr-2" style="color: #94a3b8 !important;">Ca yêu cầu:</span>
-                            <strong id="taskDetailCa" style="color: #f0f6fc !important;"></strong>
-                        </div>
-                    </div>
-
-                    <!-- Nút Hiển thị nhân viên -->
-                    <button id="btnLoadEmployees" class="btn btn-outline-secondary text-light w-100 font-weight-bold py-2" type="button" style="border-color: #30363d !important;">
-                        Hiển thị nhân viên
-                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Khối Danh sách nhân viên & Kết quả -->
-        <div class="col-md-7">
-            <!-- Khối hiển thị nhân viên để chọn -->
+        <!-- Employee assignment panel -->
+        <div class="col-md-5">
             <div class="card bg-dark text-light border-secondary shadow mb-4" style="background-color: #161b22 !important;">
-                <div class="card-header border-secondary bg-transparent d-flex justify-content-between align-items-center">
-                    <span class="font-weight-bold text-light">Danh sách nhân viên phù hợp</span>
-                    <span id="slotInfo" class="badge badge-secondary p-2" style="display: none; background-color: #21262d; color: #c9d1d9;"></span>
+                <div class="card-header border-secondary bg-transparent font-weight-bold text-light">
+                    Phân công
                 </div>
                 <div class="card-body">
-                    <div id="empListContainer">
-                        <p class="text-center py-4" style="color: #94a3b8;">Vui lòng chọn công việc và nhấn "Hiển thị nhân viên".</p>
+                    <div id="slotDetail">
+                        <p class="text-center py-4" style="color: #94a3b8;">Chọn một ô trên lịch tuần để phân công nhân viên.</p>
                     </div>
-                </div>
-                <div class="card-footer border-secondary text-right bg-transparent" id="assignFooter" style="display: none;">
-                    <button id="btnSaveAssign" class="btn btn-primary font-weight-bold px-4">
-                        Lưu phân công
-                    </button>
+                    <div id="slotAssignArea" style="display:none;">
+                        <div class="mb-3">
+                            <div class="card p-2 mb-2" style="background-color: #0d1117;border-color:#30363d;">
+                                <div id="slotTaskName" style="font-weight:700;font-size:15px;"></div>
+                                <div id="slotTaskInfo" style="font-size:12px;color:#94a3b8;"></div>
+                            </div>
+                            <div id="slotEmployees">
+                                <p style="color:#94a3b8;font-size:13px;">Đang tải...</p>
+                            </div>
+                        </div>
+                        <button id="btnSaveAssign" class="btn btn-primary w-100 font-weight-bold" style="display:none;">
+                            Lưu phân công
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Khối Phân công gần đây (ĐÃ SỬA: Bổ sung cột Thao tác & Nút Xóa) -->
+            <!-- Recent assignments -->
             <div class="card bg-dark text-light border-secondary shadow" style="background-color: #161b22 !important;">
                 <div class="card-header border-secondary bg-transparent font-weight-bold text-light">
                     Phân công gần đây
@@ -88,11 +104,7 @@
                         <table class="table table-dark table-hover mb-0" style="background-color: transparent;">
                             <thead>
                                 <tr style="color: #94a3b8; border-bottom: 1px solid #30363d;">
-                                    <th>NV</th>
-                                    <th>Công việc</th>
-                                    <th>Ngày làm</th>
-                                    <th>Ca</th>
-                                    <th style="text-align: right;">Thao tác</th> <!-- 👈 Cột mới -->
+                                    <th>NV</th><th>Công việc</th><th>Ngày</th><th>Ca</th><th style="text-align:right;">Thao tác</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -102,20 +114,14 @@
                                     <td style="color: #f0f6fc;">{{ task.ten_cv }}</td>
                                     <td style="color: #94a3b8;">{{ sch.ngay_lam_viec.strftime('%Y-%m-%d') }}</td>
                                     <td><span class="badge badge-secondary">{{ sch.ca }}</span></td>
-                                    
-                                    <!-- 👈 Nút xóa thùng rác -->
-                                    <td style="text-align: right;">
-                                        <form method="POST" action="{{ url_for('delete_assignment_route', schedule_id=sch.id) }}" class="d-inline" onsubmit="return confirm('Bạn có chắc muốn xóa phân công của {{ emp.ho_ten }} khỏi {{ task.ten_cv }}?');">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0 py-0 px-2" title="Xóa phân công nhầm">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
+                                    <td style="text-align:right;">
+                                        <form method="POST" action="{{ url_for('delete_assignment_route', schedule_id=sch.id) }}" class="d-inline" onsubmit="return confirm('Xóa phân công của {{ emp.ho_ten }}?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0 py-0 px-2" title="Xóa"><i class="bi bi-trash"></i></button>
                                         </form>
                                     </td>
                                 </tr>
                                 {% else %}
-                                <tr>
-                                    <td colspan="5" class="text-center py-3" style="color: #94a3b8;">Chưa có lịch phân công nào.</td>
-                                </tr>
+                                <tr><td colspan="5" class="text-center py-3" style="color: #94a3b8;">Chưa có lịch phân công nào.</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -126,88 +132,84 @@
     </div>
 </div>
 
+<style>
+.grid-slot { transition: opacity .15s; }
+.grid-slot:hover { opacity: 0.8; }
+.grid-slot.selected { outline: 2px solid var(--blue); outline-offset: 1px; }
+</style>
+
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    const selectTask = document.getElementById("selectTask");
-    const taskDetailCard = document.getElementById("taskDetailCard");
-    const taskDetailTitle = document.getElementById("taskDetailTitle");
-    const taskDetailSub = document.getElementById("taskDetailSub");
-    const taskDetailPriority = document.getElementById("taskDetailPriority");
-    const taskDetailCa = document.getElementById("taskDetailCa");
-
-    const btnLoad = document.getElementById("btnLoadEmployees");
-    const container = document.getElementById("empListContainer");
-    const slotInfo = document.getElementById("slotInfo");
-    const assignFooter = document.getElementById("assignFooter");
+    const slotDetail = document.getElementById("slotDetail");
+    const slotAssignArea = document.getElementById("slotAssignArea");
+    const slotTaskName = document.getElementById("slotTaskName");
+    const slotTaskInfo = document.getElementById("slotTaskInfo");
+    const slotEmployees = document.getElementById("slotEmployees");
     const btnSave = document.getElementById("btnSaveAssign");
+    const btnAuto = document.getElementById("btnAutoAssign");
+    const aiReadiness = document.getElementById("aiReadiness");
 
-    const priorityStyles = {
-        "Khẩn cấp": { bg: "rgba(239, 68, 68, 0.2)", color: "#ef4444" },
-        "Cao": { bg: "rgba(245, 158, 11, 0.2)", color: "#f59e0b" },
-        "Trung bình": { bg: "rgba(59, 130, 246, 0.2)", color: "#3b82f6" },
-        "Thấp": { bg: "rgba(148, 163, 184, 0.2)", color: "#94a3b8" }
-    };
+    let currentWsId = null;
+    let currentTaskId = null;
+    let currentNgay = null;
+    let currentCa = null;
 
-    selectTask.addEventListener("change", function() {
-        const selectedOption = selectTask.options[selectTask.selectedIndex];
-        
-        if (selectTask.value) {
-            const ten = selectedOption.getAttribute("data-ten");
-            const macv = selectedOption.getAttribute("data-macv");
-            const bp = selectedOption.getAttribute("data-bp");
-            const ngay = selectedOption.getAttribute("data-ngay");
-            const soluong = selectedOption.getAttribute("data-soluong");
-            const uutien = selectedOption.getAttribute("data-uutien");
-            const ca = selectedOption.getAttribute("data-ca");
+    // AI readiness check
+    fetch("/api/check-ai-readiness")
+        .then(r => r.json())
+        .then(data => {
+            if (data.ready) {
+                aiReadiness.textContent = "✓ Đủ dữ liệu";
+                aiReadiness.style.color = "#10b981";
+                btnAuto.disabled = false;
+            } else {
+                aiReadiness.textContent = "✗ Thiếu: " + data.missing.join(", ");
+                aiReadiness.style.color = "#ef4444";
+                btnAuto.disabled = true;
+            }
+        });
 
-            taskDetailTitle.innerText = `${ten} (${macv})`;
-            taskDetailSub.innerText = `${bp} · ${ngay} · Cần ${soluong} nhân viên`;
-            
-            taskDetailPriority.innerText = uutien;
-            const style = priorityStyles[uutien] || priorityStyles["Thấp"];
-            taskDetailPriority.style.backgroundColor = style.bg;
-            taskDetailPriority.style.color = style.color;
-            
-            taskDetailCa.innerText = ca;
-            taskDetailCard.style.display = "block";
+    // Grid slot click
+    document.querySelectorAll(".grid-slot").forEach(function(el) {
+        el.addEventListener("click", function() {
+            document.querySelectorAll(".grid-slot").forEach(s => s.classList.remove("selected"));
+            this.classList.add("selected");
 
-            loadEmployees();
-        } else {
-            taskDetailCard.style.display = "none";
-            container.innerHTML = '<p class="text-center py-4" style="color: #94a3b8;">Vui lòng chọn công việc và nhấn "Hiển thị nhân viên".</p>';
-            assignFooter.style.display = "none";
-            slotInfo.style.display = "none";
-        }
+            currentWsId = this.dataset.wsId;
+            currentTaskId = this.dataset.taskId;
+            currentNgay = this.dataset.ngay;
+            currentCa = this.dataset.ca;
+
+            loadSlot(currentWsId, currentTaskId, currentNgay, currentCa);
+        });
     });
 
-    function loadEmployees() {
-        const taskId = selectTask.value;
-        if (!taskId) {
-            alert("Vui lòng chọn công việc trước!");
-            return;
-        }
+    function loadSlot(wsId, taskId, ngay, ca) {
+        slotAssignArea.style.display = "block";
+        slotEmployees.innerHTML = '<p style="color:#94a3b8;font-size:13px;">Đang tải...</p>';
+        btnSave.style.display = "none";
 
-        container.innerHTML = '<p class="text-center py-3" style="color: #94a3b8;">Đang tải dữ liệu...</p>';
-        assignFooter.style.display = "none";
-        slotInfo.style.display = "none";
-
+        // Get task info
         fetch("/tasks/assign/get-employees", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ task_id: taskId })
+            body: JSON.stringify({ task_id: taskId, ngay_lam_viec: ngay, ca: ca })
         })
-        .then(res => res.json())
+        .then(r => r.json())
         .then(data => {
             if (data.error) {
-                container.innerHTML = `<div class="alert alert-danger mb-0">${data.error}</div>`;
+                slotEmployees.innerHTML = `<div class="alert alert-danger mb-0">${data.error}</div>`;
                 return;
             }
 
-            slotInfo.style.display = "inline-block";
-            slotInfo.innerText = `Cần ${data.max_nv} NV | Đã gán: ${data.assigned_count} | Còn lại: ${data.remaining_slots}`;
+            // Find task name from the grid
+            const gridEl = document.querySelector(`.grid-slot[data-ws-id="${wsId}"]`);
+            const taskName = gridEl ? gridEl.textContent.trim().split('\n')[0] : "Công việc";
+            slotTaskName.textContent = taskName;
+            slotTaskInfo.textContent = `${ngay} - Ca ${ca} | Cần ${data.max_nv} NV | Đã gán: ${data.assigned_count}`;
 
             if (!data.employees || data.employees.length === 0) {
-                container.innerHTML = '<p class="text-center py-3" style="color: #94a3b8;">Không tìm thấy nhân viên thuộc bộ phận này.</p>';
+                slotEmployees.innerHTML = '<p class="text-center py-3" style="color: #94a3b8;">Không tìm thấy nhân viên phù hợp.</p>';
                 return;
             }
 
@@ -221,12 +223,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     <label class="list-group-item d-flex justify-content-between align-items-center py-2" style="background-color: transparent; border-color: #21262d; color: #f0f6fc;">
                         <div>
                             <input type="checkbox" class="emp-checkbox mr-2" value="${emp.id}" ${disabled}>
-                            <strong>${emp.ho_ten}</strong> 
+                            <strong>${emp.ho_ten}</strong>
                             <small style="color: #94a3b8;">
-                                (${emp.ma_nv}) - ${emp.vi_tri || ''} 
-                                <span class="badge" style="background-color: #1e293b; color: #38bdf8; border: 1px solid #0369a1; font-weight: 500; font-size: 0.75rem; margin-left: 4px;">
-                                    ${emp.trinh_do || 'Cơ bản'}
-                                </span>
+                                (${emp.ma_nv}) - ${emp.vi_tri || 'Chưa có vị trí'}
                             </small>
                         </div>
                         <span class="badge" style="color: ${badgeColor}; font-weight: 500;">${statusText}</span>
@@ -234,18 +233,18 @@ document.addEventListener("DOMContentLoaded", function() {
                 `;
             });
             html += '</div>';
-            container.innerHTML = html;
-            assignFooter.style.display = "block";
+            slotEmployees.innerHTML = html;
+            btnSave.style.display = "block";
         })
         .catch(err => {
-            container.innerHTML = '<div class="alert alert-danger mb-0">Có lỗi xảy ra khi tải danh sách nhân viên.</div>';
+            slotEmployees.innerHTML = '<div class="alert alert-danger mb-0">Có lỗi xảy ra.</div>';
         });
     }
 
-    btnLoad.addEventListener("click", loadEmployees);
-
+    // Save assignment
     btnSave.addEventListener("click", function() {
-        const taskId = selectTask.value;
+        if (!currentTaskId) return;
+
         const selectedCheckboxes = document.querySelectorAll(".emp-checkbox:checked");
         const empIds = Array.from(selectedCheckboxes).map(cb => parseInt(cb.value));
 
@@ -261,11 +260,14 @@ document.addEventListener("DOMContentLoaded", function() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                task_id: taskId,
-                employee_ids: empIds
+                task_id: currentTaskId,
+                employee_ids: empIds,
+                week_schedule_id: currentWsId,
+                ngay_lam_viec: currentNgay,
+                ca: currentCa
             })
         })
-        .then(res => res.json())
+        .then(r => r.json())
         .then(data => {
             btnSave.disabled = false;
             btnSave.innerText = "Lưu phân công";
@@ -278,15 +280,31 @@ document.addEventListener("DOMContentLoaded", function() {
             if (data.errors && data.errors.length > 0) {
                 alert("Chú ý:\n" + data.errors.join("\n"));
             } else {
-                alert(`Đã phân công thành công ${data.assigned} nhân viên!`);
+                alert(`Đã phân công ${data.assigned} nhân viên!`);
             }
             window.location.reload();
         })
         .catch(err => {
             btnSave.disabled = false;
             btnSave.innerText = "Lưu phân công";
-            alert("Lỗi kết nối máy chủ!");
+            alert("Lỗi kết nối!");
         });
+    });
+
+    // AI auto-assign
+    btnAuto.addEventListener("click", function() {
+        if (!confirm("AI sẽ tự động phân công nhân viên cho tất cả ô lịch trong tuần này. Xác nhận?")) return;
+        btnAuto.disabled = true;
+        btnAuto.innerText = "Đang xử lý...";
+
+        fetch("/tasks/assign/auto-all", { method: "POST" })
+            .then(r => {
+                window.location.reload();
+            })
+            .catch(() => {
+                btnAuto.disabled = false;
+                btnAuto.innerText = "AI phân công";
+            });
     });
 });
 </script>

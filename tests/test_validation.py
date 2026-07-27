@@ -24,8 +24,7 @@ def test_employee_validation_accepts_complete_payload():
         "ho_ten": "Nguyễn Văn A",
         "email": "a@example.com",
         "bo_phan": "IT Support",
-        "vi_tri": "Nhân viên IT",
-        "trinh_do": "Khá",
+        "vi_tri": "Nhân viên IT(Khá)",
     }
     assert validate_employee_payload(data) == []
 
