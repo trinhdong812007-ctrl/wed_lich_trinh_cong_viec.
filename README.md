@@ -30,25 +30,37 @@ Toàn bộ các thư viện và công nghệ được sử dụng trong dự án
 
 ```
 employee_task_scheduler/
-├── applist.py              # File chạy chính: models, routes, logic xác thực, kích hoạt Key & phân công
-├── requirements.txt
-├── README.md
-├── .gitignore
-├── LICENSE
-├── templates/
-│   ├── base.html           # Layout chung (sidebar + topbar, tích hợp Dark Theme CSS)
-│   ├── login.html          # Trang đăng nhập hệ thống
-│   ├── register.html       # Trang đăng ký tài khoản (kèm ô nhập Key kích hoạt)
-│   ├── dashboard.html      # Trang Dashboard
-│   ├── employees.html      # Quản lý nhân viên (CRUD + tìm kiếm)
-│   ├── tasks.html          # Quản lý công việc (CRUD + tìm kiếm)
-│   ├── task_assign.html    # Phân công công việc (chọn NV, xem phân công gần đây, xóa phân công)
-│   ├── lich_trinh.html     # Lịch làm việc theo tuần (dạng bảng grid, tự động căn chỉnh)
-│   ├── reports.html        # Báo cáo / thống kê
-│   └── import_data.html    # Nhập dữ liệu từ Excel / CSV
-└── static/
-    ├── css/style.css
-    ├── js/app.js
+├── .git/                    # Thư mục quản lý phiên bản Git
+├── .venv/                   # Môi trường ảo Python (Virtual Environment)
+├── __pycache__/             # Thư mục chứa Bytecode đã biên dịch của Python
+├── static/                  # Chứa tài nguyên tĩnh
+│   ├── css/
+│   │   └── style.css        # File định kiểu giao diện Dark Mode & responsive
+│   ├── js/
+│   │   └── app.js           # Xử lý các tương tác giao diện linh hoạt
+│   └── img/
+│       └── logo.svg         # Biểu tượng/Logo ứng dụng
+├── templates/                # Thư mục chứa giao diện HTML (Jinja2)
+│   ├── base.html             # Layout khung chung (sidebar, topbar)
+│   ├── login.html            # Trang đăng nhập
+│   ├── register.html         # Trang đăng ký (kèm nhập Key kích hoạt)
+│   ├── dashboard.html        # Trang tổng quan thống kê
+│   ├── employees.html        # Quản lý danh sách nhân viên
+│   ├── tasks.html            # Quản lý danh sách công việc
+│   ├── task_assign.html      # Trang giao / phân công việc
+│   ├── lich_trinh.html       # Bảng lịch làm việc tuần
+│   ├── reports.html          # Báo cáo thống kê
+│   └── import_data.html      # Nhập dữ liệu từ Excel / CSV
+├── tests/                    # Thư mục chứa các kịch bản kiểm thử (Unit Tests)
+├── .gitignore                 # Danh sách khai báo file/thư mục Git bỏ qua
+├── .last_update                # File đánh dấu thời gian cập nhật gần nhất
+├── applist.py                  # File chạy chính: Flask app, routes, models & logic ứng dụng
+├── generate_keys.py            # Script sinh mã Key kích hoạt
+├── LICENSE                     # Giấy phép mã nguồn mở (MIT License)
+├── Procfile                    # Cấu hình khởi chạy trên Render
+├── README.md                   # Tài liệu hướng dẫn & thông tin dự án
+├── requirements.txt             # Danh sách thư viện Python phụ thuộc
+└── scheduler.db                # Cơ sở dữ liệu SQLite chính của ứng dụng
     └── img/logo.svg
 ```
 
