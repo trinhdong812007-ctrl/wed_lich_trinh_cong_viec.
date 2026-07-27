@@ -61,7 +61,6 @@ employee_task_scheduler/
 ├── README.md                   # Tài liệu hướng dẫn & thông tin dự án
 ├── requirements.txt             # Danh sách thư viện Python phụ thuộc
 └── scheduler.db                # Cơ sở dữ liệu SQLite chính của ứng dụng
-    └── img/logo.svg
 ```
 
 ## 🚀 Cài đặt & chạy cục bộ (Local)
@@ -90,6 +89,22 @@ Cơ sở dữ liệu SQLite (`scheduler.db`) cùng tài khoản Admin mặc đ�
 | Password | `admin123` |
 
 > ⚠️ **Lưu ý bảo mật:** Hãy đổi mật khẩu mặc định ngay khi triển khai lên môi trường thực tế (production).
+
+### 🗝️ Sinh Key kích hoạt (Local)
+
+Ngoài route `/generate-keys-admin`, có thể sinh Key kích hoạt trực tiếp bằng script:
+
+```bash
+python generate_keys.py
+```
+
+### 🧪 Chạy kiểm thử (Tests)
+
+Các kịch bản kiểm thử nằm trong thư mục `tests/`:
+
+```bash
+pytest tests/
+```
 
 ## ✨ Chức năng chính & Cập nhật mới
 
@@ -131,7 +146,7 @@ Cơ sở dữ liệu SQLite (`scheduler.db`) cùng tài khoản Admin mặc đ�
 2. Trên [Render](https://render.com), tạo mới **Web Service** và liên kết với repository.
 3. Cấu hình:
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn applist:app`
+   - **Start Command:** lấy từ `Procfile` có sẵn trong dự án (`web: gunicorn applist:app`)
 4. Để tạo Key kích hoạt trên Render, truy cập:
    ```
    https://<domain-render-cua-ban>/generate-keys-admin
