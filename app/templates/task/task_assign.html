@@ -115,7 +115,7 @@
                                     <td style="color: #94a3b8;">{{ sch.ngay_lam_viec.strftime('%Y-%m-%d') }}</td>
                                     <td><span class="badge badge-secondary">{{ sch.ca }}</span></td>
                                     <td style="text-align:right;">
-                                        <form method="POST" action="{{ url_for('delete_assignment_route', schedule_id=sch.id) }}" class="d-inline" onsubmit="return confirm('Xóa phân công của {{ emp.ho_ten }}?');">
+                                        <form method="POST" action="{{ url_for('task.delete_assignment_route', schedule_id=sch.id) }}" class="d-inline" onsubmit="return confirm('Xóa phân công của {{ emp.ho_ten }}?');">
                                             <button type="submit" class="btn btn-sm btn-outline-danger border-0 py-0 px-2" title="Xóa"><i class="bi bi-trash"></i></button>
                                         </form>
                                     </td>

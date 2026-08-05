@@ -6,13 +6,13 @@
 <div class="panel">
   <div class="week-toolbar">
     <div class="week-nav">
-      <a href="{{ url_for('lich_trinh', start=prev_week) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
-      <a href="{{ url_for('lich_trinh') }}" class="btn btn-sm btn-outline-secondary">Tuần này</a>
-      <a href="{{ url_for('lich_trinh', start=next_week) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
+      <a href="{{ url_for('dashboard.lich_trinh', start=prev_week) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
+      <a href="{{ url_for('dashboard.lich_trinh') }}" class="btn btn-sm btn-outline-secondary">Tuần này</a>
+      <a href="{{ url_for('dashboard.lich_trinh', start=next_week) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
       <span class="week-range">{{ week_dates[0].strftime('%d/%m/%Y') }} - {{ week_dates[-1].strftime('%d/%m/%Y') }}</span>
     </div>
     <div>
-      <a href="{{ url_for('tasks_page') }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg"></i> Thêm công việc</a>
+      <a href="{{ url_for('task.tasks_page') }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg"></i> Thêm công việc</a>
     </div>
   </div>
 
@@ -39,17 +39,27 @@
               {% if entries %}
                 <div class="d-flex flex-column gap-1">
                   {% for entry in entries %}
-                    <a href="{{ url_for('tasks_page', detail=entry['task'].id) }}" 
-                       class="cell-slot {{ 'slot-sang' if ca=='Sáng' else 'slot-chieu' }} d-block mb-1" 
-                       title="{{ entry['task'].ten_cv }} ({{ entry['task'].do_uu_tien }})" 
-                       style="background:{{ do_uu_tien_bg.get(entry['task'].do_uu_tien, 'rgba(59,130,246,0.18)') }};color:{{ do_uu_tien_colors.get(entry['task'].do_uu_tien, '#60a5fa') }};text-decoration:none;">
-                      {{ entry['task'].ten_cv }}
-                      {% if entry['employees'] %}
-                        <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;">
-                          {{ entry['employees']|length }} NV
-                        </span>
-                      {% endif %}
-                    </a>
+                    <div class="cell-slot-wrap">
+                      <a href="{{ url_for('task.tasks_page', detail=entry['task'].id) }}" 
+                         class="cell-slot {{ 'slot-sang' if ca=='Sáng' else 'slot-chieu' }} d-block mb-1" 
+                         title="{{ entry['task'].ten_cv }} ({{ entry['task'].do_uu_tien }})" 
+                         style="background:{{ do_uu_tien_bg.get(entry['task'].do_uu_tien, 'rgba(59,130,246,0.18)') }};color:{{ do_uu_tien_colors.get(entry['task'].do_uu_tien, '#60a5fa') }};text-decoration:none;">
+                        {{ entry['task'].ten_cv }}
+                        {% if entry['employees'] %}
+                          <span style="display:block;font-size:10px;color:var(--text-muted);margin-top:2px;">
+                            {{ entry['employees']|length }} NV
+                          </span>
+                        {% endif %}
+                      </a>
+                      <form method="post" action="{{ url_for('schedule.schedule_delete_slot') }}"
+                            class="cell-slot-del"
+                            onsubmit="return confirm('Xóa công việc &quot;{{ entry['task'].ten_cv }}&quot; khỏi {{ d.strftime('%d/%m/%Y') }} ca {{ ca }}?');">
+                        <input type="hidden" name="task_id" value="{{ entry['task'].id }}">
+                        <input type="hidden" name="ngay_lam_viec" value="{{ d.strftime('%Y-%m-%d') }}">
+                        <input type="hidden" name="ca" value="{{ ca }}">
+                        <button type="submit" title="Xóa công việc này khỏi ô lịch" class="btn-del-cell"><i class="bi bi-x-circle-fill"></i></button>
+                      </form>
+                    </div>
                   {% endfor %}
                 </div>
               {% else %}
@@ -155,5 +165,28 @@
     margin-bottom: 4px;
     text-align: center;
 }
+.cell-slot-wrap {
+    position: relative;
+    display: block;
+}
+.cell-slot-del {
+    position: absolute;
+    top: 1px;
+    right: 3px;
+    margin: 0;
+    z-index: 3;
+}
+.btn-del-cell {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.7;
+    cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+.btn-del-cell:hover { opacity: 1; }
 </style>
 {% endblock %}

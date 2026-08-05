@@ -4,13 +4,13 @@
 
 {% block content %}
 <div class="sub-tabs mb-3">
-  <a href="{{ url_for('tasks_page') }}" class="sub-tab">
+  <a href="{{ url_for('task.tasks_page') }}" class="sub-tab">
     <i class="bi bi-list-task"></i> Danh sách công việc
   </a>
-  <a href="{{ url_for('task_history') }}" class="sub-tab {{ 'active' if request.endpoint=='task_history' }}">
+  <a href="{{ url_for('task.task_history') }}" class="sub-tab {{ 'active' if request.endpoint=='task.task_history' }}">
     <i class="bi bi-clock-history"></i> Lịch sử
   </a>
-  <a href="{{ url_for('task_assign') }}" class="sub-tab">
+  <a href="{{ url_for('task.task_assign') }}" class="sub-tab">
     <i class="bi bi-person-plus"></i> Phân công
   </a>
 </div>
@@ -45,7 +45,7 @@
             <span class="priority-tag" style="background:{{ bg.get(t.do_uu_tien, 'rgba(59,130,246,0.18)') }};color:{{ color.get(t.do_uu_tien, '#3b82f6') }}">{{ t.do_uu_tien }}</span>
           </td>
           <td style="text-align:right" onclick="event.stopPropagation()">
-            <form method="POST" action="{{ url_for('task_delete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Xóa vĩnh viễn công việc {{ t.ten_cv }}?');">
+            <form method="POST" action="{{ url_for('task.task_delete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Xóa vĩnh viễn công việc {{ t.ten_cv }}?');">
               <button class="action-btn danger" type="submit" title="Xóa"><i class="bi bi-trash"></i></button>
             </form>
           </td>
@@ -64,7 +64,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Chi tiết công việc</h5>
-        <a href="{{ url_for('task_history', q=q) }}" class="btn-close"></a>
+        <a href="{{ url_for('task.task_history', q=q) }}" class="btn-close"></a>
       </div>
       <div class="modal-body">
         <div class="row g-3">
@@ -150,7 +150,7 @@
         {% endif %}
       </div>
       <div class="modal-footer">
-        <a href="{{ url_for('task_history', q=q if q else none) }}" class="btn btn-light">Đóng</a>
+        <a href="{{ url_for('task.task_history', q=q if q else none) }}" class="btn btn-light">Đóng</a>
       </div>
     </div>
   </div>

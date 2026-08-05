@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from applist import validate_employee_payload, validate_task_payload
+from app.services.validation import validate_employee_payload, validate_task_payload
 
 
 def test_employee_validation_requires_core_fields():

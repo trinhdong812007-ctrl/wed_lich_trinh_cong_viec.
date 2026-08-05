@@ -54,7 +54,7 @@
         {% endif %}
     {% endwith %}
 
-    <form method="POST" action="{{ url_for('login') }}">
+    <form method="POST" action="{{ url_for('auth.login') }}">
         <div class="mb-3">
             <label class="form-label text-light">Tên đăng nhập</label>
             <input type="text" class="form-control" name="username" required autofocus autocomplete="username">
@@ -74,7 +74,7 @@
     </form>
 
     <div class="text-center mt-4">
-        <small class="text-secondary">Chưa có tài khoản? <a href="{{ url_for('register') }}" class="text-info text-decoration-none">Đăng ký tại đây</a></small>
+        <small class="text-secondary">Chưa có tài khoản? <a href="{{ url_for('auth.register') }}" class="text-info text-decoration-none">Đăng ký tại đây</a></small>
     </div>
 </div>
 

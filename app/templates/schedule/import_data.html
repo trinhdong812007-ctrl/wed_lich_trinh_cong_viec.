@@ -24,10 +24,10 @@
     <div class="col-md-4">
       <label class="form-label">Tải mẫu biểu mẫu</label>
       <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-secondary" href="{{ url_for('download_template', template_type='employees') }}">
+        <a class="btn btn-outline-secondary" href="{{ url_for('schedule.download_template', template_type='employees') }}">
           <i class="bi bi-file-earmark-spreadsheet"></i> Mẫu nhân viên
         </a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('download_template', template_type='tasks') }}">
+        <a class="btn btn-outline-secondary" href="{{ url_for('schedule.download_template', template_type='tasks') }}">
           <i class="bi bi-file-earmark-spreadsheet"></i> Mẫu công việc
         </a>
       </div>
@@ -38,7 +38,7 @@
     </div>
     <div class="col-12">
       <button class="btn btn-primary" type="submit"><i class="bi bi-cloud-arrow-up"></i> Nhập dữ liệu</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('employees_page') }}">Quay lại</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('employee.employees_page') }}">Quay lại</a>
     </div>
   </form>
 

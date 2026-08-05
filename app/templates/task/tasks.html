@@ -4,13 +4,13 @@
 
 {% block content %}
 <div class="sub-tabs mb-3">
-  <a href="{{ url_for('tasks_page') }}" class="sub-tab {{ 'active' if request.endpoint=='tasks_page' }}">
+  <a href="{{ url_for('task.tasks_page') }}" class="sub-tab {{ 'active' if request.endpoint=='task.tasks_page' }}">
     <i class="bi bi-list-task"></i> Danh sách công việc
   </a>
-  <a href="{{ url_for('task_history') }}" class="sub-tab {{ 'active' if request.endpoint=='task_history' }}">
+  <a href="{{ url_for('task.task_history') }}" class="sub-tab {{ 'active' if request.endpoint=='task.task_history' }}">
     <i class="bi bi-clock-history"></i> Lịch sử
   </a>
-  <a href="{{ url_for('task_assign') }}" class="sub-tab {{ 'active' if request.endpoint=='task_assign' }}">
+  <a href="{{ url_for('task.task_assign') }}" class="sub-tab {{ 'active' if request.endpoint=='task.task_assign' }}">
     <i class="bi bi-person-plus"></i> Phân công
   </a>
 </div>
@@ -22,7 +22,7 @@
       <button class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
     </form>
     <div class="d-flex" style="gap:8px; flex-wrap:wrap; align-items:center;">
-      <a class="btn btn-outline-secondary" href="{{ url_for('import_data_page') }}">
+      <a class="btn btn-outline-secondary" href="{{ url_for('schedule.import_data_page') }}">
         <i class="bi bi-cloud-arrow-up"></i> Nhập hàng loạt
       </a>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
@@ -52,12 +52,12 @@
           </td>
           <td>{{ t.so_luong_nv }}</td>
           <td style="text-align:right" onclick="event.stopPropagation()">
-            <form method="POST" action="{{ url_for('task_complete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Đánh dấu công việc {{ t.ten_cv }} hoàn thành?');">
+            <form method="POST" action="{{ url_for('task.task_complete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Đánh dấu công việc {{ t.ten_cv }} hoàn thành?');">
               <button class="action-btn" style="color:var(--green)" title="Hoàn thành"><i class="bi bi-check-lg"></i></button>
             </form>
-            <a href="{{ url_for('task_assign') }}?task_id={{ t.id }}" class="action-btn" title="Phân công"><i class="bi bi-person-plus"></i></a>
+            <a href="{{ url_for('task.task_assign') }}?task_id={{ t.id }}" class="action-btn" title="Phân công"><i class="bi bi-person-plus"></i></a>
             <button class="action-btn" data-bs-toggle="modal" data-bs-target="#editTaskModal{{ t.id }}"><i class="bi bi-pencil"></i></button>
-            <form method="POST" action="{{ url_for('task_delete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Xóa công việc {{ t.ten_cv }}?');">
+            <form method="POST" action="{{ url_for('task.task_delete', task_id=t.id) }}" class="d-inline" onsubmit="return confirm('Xóa công việc {{ t.ten_cv }}?');">
               <button class="action-btn danger" type="submit"><i class="bi bi-trash"></i></button>
             </form>
           </td>
@@ -67,7 +67,7 @@
         <div class="modal fade" id="editTaskModal{{ t.id }}" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
-              <form method="POST" action="{{ url_for('task_edit', task_id=t.id) }}">
+              <form method="POST" action="{{ url_for('task.task_edit', task_id=t.id) }}">
                 <div class="modal-header"><h5 class="modal-title">Sửa công việc</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                   <div class="mb-2"><label class="form-label">Mã công việc</label><input class="form-control" name="ma_cv" value="{{ t.ma_cv }}" required></div>
@@ -119,7 +119,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Chi tiết công việc</h5>
-        <a href="{{ url_for('tasks_page', q=q if q else none) }}" class="btn-close"></a>
+        <a href="{{ url_for('task.tasks_page', q=q if q else none) }}" class="btn-close"></a>
       </div>
       <div class="modal-body">
         <div class="row g-3">
@@ -198,7 +198,7 @@
               <td>{{ s.ngay_lam_viec.strftime('%d/%m/%Y') }}</td>
               <td><span class="badge-ca {{ 'badge-sang' if s.ca=='Sáng' else 'badge-chieu' }}">{{ s.ca }}</span></td>
               <td style="text-align:right">
-                <form method="POST" action="{{ url_for('delete_assignment_route', schedule_id=s.id) }}" class="d-inline" onsubmit="return confirm('Xóa phân công của {{ emp.ho_ten }} khỏi công việc này?');">
+                <form method="POST" action="{{ url_for('task.delete_assignment_route', schedule_id=s.id) }}" class="d-inline" onsubmit="return confirm('Xóa phân công của {{ emp.ho_ten }} khỏi công việc này?');">
                   <button type="submit" class="action-btn danger" title="Xóa phân công nhầm">
                     <i class="bi bi-trash"></i>
                   </button>
@@ -213,8 +213,8 @@
         {% endif %}
       </div>
       <div class="modal-footer">
-        <a href="{{ url_for('tasks_page', q=q if q else none) }}" class="btn btn-light">Đóng</a>
-        <a href="{{ url_for('task_assign') }}?task_id={{ detail_task.id }}" class="btn btn-primary"><i class="bi bi-person-plus"></i> Phân công</a>
+        <a href="{{ url_for('task.tasks_page', q=q if q else none) }}" class="btn btn-light">Đóng</a>
+        <a href="{{ url_for('task.task_assign') }}?task_id={{ detail_task.id }}" class="btn btn-primary"><i class="bi bi-person-plus"></i> Phân công</a>
       </div>
     </div>
   </div>
@@ -225,7 +225,7 @@
 <div class="modal fade" id="addTaskModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="POST" action="{{ url_for('task_add') }}">
+      <form method="POST" action="{{ url_for('task.task_add') }}">
         <div class="modal-header"><h5 class="modal-title">Thêm công việc</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label">Mã công việc</label><input class="form-control" name="ma_cv" placeholder="VD: CV011" required></div>

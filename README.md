@@ -29,38 +29,57 @@ Toàn bộ các thư viện và công nghệ được sử dụng trong dự án
 ## 📂 Cấu trúc dự án
 
 ```
-employee_task_scheduler/
+wed_lich_trinh_cong_viec/
 ├── .git/                    # Thư mục quản lý phiên bản Git
 ├── .venv/                   # Môi trường ảo Python (Virtual Environment)
 ├── __pycache__/             # Thư mục chứa Bytecode đã biên dịch của Python
-├── static/                  # Chứa tài nguyên tĩnh
-│   ├── css/
-│   │   └── style.css        # File định kiểu giao diện Dark Mode & responsive
-│   ├── js/
-│   │   └── app.js           # Xử lý các tương tác giao diện linh hoạt
-│   └── img/
-│       └── logo.svg         # Biểu tượng/Logo ứng dụng
-├── templates/                # Thư mục chứa giao diện HTML (Jinja2)
-│   ├── base.html             # Layout khung chung (sidebar, topbar)
-│   ├── login.html            # Trang đăng nhập
-│   ├── register.html         # Trang đăng ký (kèm nhập Key kích hoạt)
-│   ├── dashboard.html        # Trang tổng quan thống kê
-│   ├── employees.html        # Quản lý danh sách nhân viên
-│   ├── tasks.html            # Quản lý danh sách công việc
-│   ├── task_assign.html      # Trang giao / phân công việc
-│   ├── lich_trinh.html       # Bảng lịch làm việc tuần
-│   ├── reports.html          # Báo cáo thống kê
-│   └── import_data.html      # Nhập dữ liệu từ Excel / CSV
-├── tests/                    # Thư mục chứa các kịch bản kiểm thử (Unit Tests)
-├── .gitignore                 # Danh sách khai báo file/thư mục Git bỏ qua
-├── .last_update                # File đánh dấu thời gian cập nhật gần nhất
-├── applist.py                  # File chạy chính: Flask app, routes, models & logic ứng dụng
-├── generate_keys.py            # Script sinh mã Key kích hoạt
-├── LICENSE                     # Giấy phép mã nguồn mở (MIT License)
-├── Procfile                    # Cấu hình khởi chạy trên Render
-├── README.md                   # Tài liệu hướng dẫn & thông tin dự án
-├── requirements.txt             # Danh sách thư viện Python phụ thuộc
-└── scheduler.db                # Cơ sở dữ liệu SQLite chính của ứng dụng
+├── app.py                   # File chạy chính (entry point): khởi tạo & chạy ứng dụng
+├── config.py                # Cấu hình hệ thống (Database, SECRET_KEY, ...)
+├── generate_keys.py         # Script sinh mã Key kích hoạt
+├── LICENSE                  # Giấy phép mã nguồn mở (MIT License)
+├── Procfile                 # Cấu hình khởi chạy trên Render
+├── README.md                # Tài liệu hướng dẫn & thông tin dự án
+├── requirements.txt          # Danh sách thư viện Python phụ thuộc
+├── employees_sample.xlsx     # File mẫu nhập danh sách nhân viên
+├── tasks_sample.xlsx         # File mẫu nhập danh sách công việc
+├── app/                     # Thư mục chứa mã nguồn chính
+│   ├── __init__.py          # Khởi tạo Flask app (Application Factory), đăng ký Blueprints
+│   ├── extensions.py        # db, login_manager và các hằng số nghiệp vụ
+│   ├── models/              # Models ORM (SQLAlchemy)
+│   │   ├── __init__.py
+│   │   ├── user.py          # Model người dùng & Key kích hoạt
+│   │   ├── employee.py      # Model nhân viên
+│   │   ├── task.py          # Model công việc
+│   │   ├── schedule.py      # Model phân công lịch làm việc
+│   │   └── page.py          # Model trang động (CMS)
+│   ├── routes/              # Routes (Flask Blueprints)
+│   │   ├── __init__.py      # Đăng ký toàn bộ Blueprints
+│   │   ├── auth.py          # Đăng nhập, đăng ký, đăng xuất, sinh Key
+│   │   ├── dashboard.py     # Lịch làm việc tuần, báo cáo, API trạng thái
+│   │   ├── employee.py      # Quản lý nhân viên
+│   │   ├── task.py          # Quản lý & phân công công việc
+│   │   └── schedule.py      # TKB tuần, nhập dữ liệu, tải template
+│   ├── services/            # Xử lý nghiệp vụ (Business Logic)
+│   │   ├── __init__.py
+│   │   ├── validation.py    # Xác thực dữ liệu đầu vào
+│   │   ├── helpers.py       # Hàm tiện ích (parse ngày, chuẩn hóa văn bản...)
+│   │   ├── scheduling.py    # Logic phân công & kiểm tra trùng ca
+│   │   └── schema.py        # Khởi tạo DB & nâng cấp schema cũ
+│   ├── templates/           # Giao diện HTML (Jinja2)
+│   │   ├── base.html        # Layout chung
+│   │   ├── auth/            # Trang đăng nhập / đăng ký
+│   │   ├── dashboard/       # Lịch trình, báo cáo, trang động
+│   │   ├── employee/        # Quản lý nhân viên
+│   │   ├── task/            # Công việc, phân công, lịch sử
+│   │   └── schedule/        # TKB tuần, nhập dữ liệu
+│   └── static/              # Tài nguyên tĩnh (CSS, JS, Images)
+│       ├── css/             # style.css
+│       ├── js/              # app.js
+│       └── img/             # logo.svg
+├── instance/               # Dữ liệu runtime (CSDL SQLite)
+│   └── database.db          # Cơ sở dữ liệu SQLite chính của ứng dụng
+├── migrations/             # Quản lý migration của DB (Flask-Migrate / Alembic)
+└── tests/                   # Các kịch bản kiểm thử (Unit Tests)
 ```
 
 ## 🚀 Cài đặt & chạy cục bộ (Local)
@@ -74,12 +93,12 @@ source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 3. Chạy ứng dụng
-python applist.py
+python app.py
 ```
 
 Mở trình duyệt tại: **http://127.0.0.1:5000**
 
-Cơ sở dữ liệu SQLite (`scheduler.db`) cùng tài khoản Admin mặc định sẽ tự động được tạo và nạp dữ liệu mẫu khi chạy ứng dụng lần đầu.
+Cơ sở dữ liệu SQLite (`instance/database.db`) cùng tài khoản Admin mặc định sẽ tự động được tạo và nạp dữ liệu mẫu khi chạy ứng dụng lần đầu.
 
 ### 🔑 Tài khoản đăng nhập mặc định
 
@@ -146,7 +165,7 @@ pytest tests/
 2. Trên [Render](https://render.com), tạo mới **Web Service** và liên kết với repository.
 3. Cấu hình:
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** lấy từ `Procfile` có sẵn trong dự án (`web: gunicorn applist:app`)
+   - **Start Command:** lấy từ `Procfile` có sẵn trong dự án (`web: gunicorn app:app`)
 4. Để tạo Key kích hoạt trên Render, truy cập:
    ```
    https://<domain-render-cua-ban>/generate-keys-admin

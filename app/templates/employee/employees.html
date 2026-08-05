@@ -10,7 +10,7 @@
       <button class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
     </form>
     <div class="d-flex" style="gap:8px;">
-      <a class="btn btn-outline-secondary" href="{{ url_for('import_data_page') }}">
+      <a class="btn btn-outline-secondary" href="{{ url_for('schedule.import_data_page') }}">
         <i class="bi bi-cloud-arrow-up"></i> Nhập hàng loạt
       </a>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addEmployeeModal">
@@ -36,7 +36,7 @@
           <td>{{ e.vi_tri or '-' }}</td>
           <td style="text-align:right">
             <button class="action-btn" data-bs-toggle="modal" data-bs-target="#editEmployeeModal{{ e.id }}"><i class="bi bi-pencil"></i></button>
-            <form method="POST" action="{{ url_for('employee_delete', emp_id=e.id) }}" class="d-inline" onsubmit="return confirm('Xoa nhan vien {{ e.ho_ten }}?');">
+            <form method="POST" action="{{ url_for('employee.employee_delete', emp_id=e.id) }}" class="d-inline" onsubmit="return confirm('Xoa nhan vien {{ e.ho_ten }}?');">
               <button class="action-btn danger" type="submit"><i class="bi bi-trash"></i></button>
             </form>
           </td>
@@ -45,7 +45,7 @@
         <div class="modal fade" id="editEmployeeModal{{ e.id }}" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
-              <form method="POST" action="{{ url_for('employee_edit', emp_id=e.id) }}">
+              <form method="POST" action="{{ url_for('employee.employee_edit', emp_id=e.id) }}">
                 <div class="modal-header"><h5 class="modal-title">Sửa nhân viên</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                 <div class="modal-body">
                   <div class="mb-2"><label class="form-label">Mã nhân viên</label><input class="form-control" name="ma_nv" value="{{ e.ma_nv }}" required></div>
@@ -84,7 +84,7 @@
 <div class="modal fade" id="addEmployeeModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
-      <form method="POST" action="{{ url_for('employee_add') }}">
+      <form method="POST" action="{{ url_for('employee.employee_add') }}">
         <div class="modal-header"><h5 class="modal-title">Thêm nhân viên</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <div class="mb-2"><label class="form-label">Mã nhân viên</label><input class="form-control" name="ma_nv" placeholder="VD: NV008" required></div>
